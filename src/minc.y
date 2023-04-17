@@ -1,6 +1,12 @@
 %{
 
 
+// NAMING CONVENTION
+// TOKEN_           (including T_TYPENAME_)
+// OP_OPERATION     (e.g. OP_ADD, except NAME, LIT_INT, LIT_DEC, LIT_STR)
+// T_TYPE
+
+
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -13,23 +19,22 @@ enum {
 	NStr = 256,
 };
 
-// minic types
 enum {
-	NIL,
-	INT,
-	LNG,
-	DBL,
-	PTR,
-	FUN,
+	T_VOID,
+	T_INT,
+	T_LNG,
+	T_DBL,
+	T_PTR,
+	T_FUN,
 };
 
-#define IDIR(x) (((x) << 3) + PTR)
-#define FUNC(x) (((x) << 3) + FUN)
+#define IDIR(x) (((x) << 3) + T_PTR)
+#define FUNC(x) (((x) << 3) + T_FUN)
 #define DREF(x) ((x) >> 3)
 #define KIND(x) ((x) & 7)
 #define SIZE(x) (                                   \
-    x == NIL ? (die("void has no size"), 0) : (     \
-	x == INT ? 4 : (                                \
+    x == T_VOID ? (die("void has no size"), 0) : (  \
+	x == T_INT ? 4 : (                              \
 	8                                               \
 )))
 
@@ -54,6 +59,17 @@ enum {
 #define OP_DIV  '/'
 #define OP_REM  '%'
 
+#define OP_DEREF '@'
+#define OP_ADDR  'A'
+
+#define OP_PP   'P'
+#define OP_MM   'M'
+
+#define NAME    'V'
+#define LIT_INT 'N'
+#define LIT_DEC 'D'
+
+
 
 void ppCtype(unsigned long t) {
     int n = 0, i;
@@ -62,19 +78,19 @@ void ppCtype(unsigned long t) {
         t = DREF(t);
     }
     switch (t) {
-    case NIL:
+    case T_VOID:
         fprintf(stderr, "void ");
         break;
-    case INT:
+    case T_INT:
         fprintf(stderr, "int ");
         break;
-    case LNG:
+    case T_LNG:
         fprintf(stderr, "long ");
         break;
-    case DBL:
+    case T_DBL:
         fprintf(stderr, "double ");
         break;
-	case FUN:
+	case T_FUN:
         fprintf(stderr, "() ");
         break;
     default:
@@ -88,30 +104,10 @@ void ppCtype(unsigned long t) {
 
 
 
-
-// SNIPETS for code gen
-
-// was Glo%d now g%d
-#define GLOBAL_1 "$g%d"
-#define GLOBAL_2 "data $g%d = %s\n"
-
-// was %%t%d now %%_%d
-#define TEMP_1 "%%t%d"
-#define TEMP_2 "\t%%t%d =l extsw "
-#define TEMP_3 "\t%%t%d =d swtof "
-#define TEMP_4 "\t%%t%d =d sltof "
-#define TEMP_5 "\t%%t%d =l mul %d, "
-#define TEMP_6 "\t%%t%d =l div "
-#define TEMP_7 "%%t%d"
-#define TEMP_8 "\tstore%c %%t%d"
-
-// was %%%s now %%_%s
-#define VAR_1 "%%_%s"
-#define VAR_2 "\t%%_%s =l alloc%d %d\n"
-#define VAR_3 ", %%_%s\n"
-#define VAR_4 "\t%%_%s =l alloc%d %d\n"
-
-
+#define GLOBAL "$g"
+#define TEMP "%%t"
+#define LOCAL "%%_"
+#define LABEL "@L"
 
 
 typedef struct Node Node;
@@ -129,6 +125,7 @@ struct Symb {
 	union {
 		int n;
 		char v[NString];
+		double d;
 	} u;
 	unsigned long ctyp;
 };
@@ -252,26 +249,29 @@ Symb * varget(char *v) {
 
 
 char irtyp(unsigned ctyp) {
-    if (ctyp == NIL) die("void has no size");
-    if (ctyp == INT) return 'w';
-//    if (ctyp == LNG) return 'l';
-    if (ctyp == DBL) return 'd';
-//    if (ctyp == PTR) return 'l';
-//    if (ctyp == FUN) return 'l';
-	return 'l';
+    switch (KIND(ctyp)) {
+        case T_VOID: die("void has no size");
+        case T_INT: return 'w';
+        case T_LNG: return 'l';
+        case T_DBL: return 'd';
+        case T_PTR: return 'l';
+        case T_FUN: return 'l';
+    }
+    die("unhandled type");
+    return 'l';
 }
 
 
 void psymb(Symb s) {
 	switch (s.t) {
 	case Tmp:
-		fprintf(of, TEMP_1, s.u.n);
+		fprintf(of, TEMP "%d", s.u.n);
 		break;
 	case Var:
-		fprintf(of, VAR_1, s.u.v);
+		fprintf(of, LOCAL "%s", s.u.v);
 		break;
 	case Glo:
-		fprintf(of, GLOBAL_1, s.u.n);
+		fprintf(of, GLOBAL "%d", s.u.n);
 		break;
 	case Con:
 		fprintf(of, "%d", s.u.n);
@@ -281,31 +281,31 @@ void psymb(Symb s) {
 
 
 void l_extsw(Symb *s) {
-	fprintf(of, TEMP_2, tmp);
+	fprintf(of, "\t" TEMP "%d =l extsw ", tmp);
 	psymb(*s);
 	fprintf(of, "\n");
 	s->t = Tmp;
-	s->ctyp = LNG;
+	s->ctyp = T_LNG;
 	s->u.n = tmp++;
 }
 
 
 void d_swtof(Symb *s) {
-	fprintf(of, TEMP_3, tmp);
+	fprintf(of, "\t" TEMP "%d =d swtof ", tmp);
 	psymb(*s);
 	fprintf(of, "\n");
 	s->t = Tmp;
-	s->ctyp = DBL;
+	s->ctyp = T_DBL;
 	s->u.n = tmp++;
 }
 
 
 void d_sltof(Symb *s) {
-	fprintf(of, TEMP_4, tmp);
+	fprintf(of, "\t" TEMP "%d =d sltof ", tmp);
 	psymb(*s);
 	fprintf(of, "\n");
 	s->t = Tmp;
-	s->ctyp = DBL;
+	s->ctyp = T_DBL;
 	s->u.n = tmp++;
 }
 
@@ -314,50 +314,53 @@ unsigned prom(int op, Symb *l, Symb *r) {
 	Symb *t;
 	int sz;
 
-	if (l->ctyp == r->ctyp && KIND(l->ctyp) != PTR)
+	if (l->ctyp == r->ctyp && KIND(l->ctyp) != T_PTR)
 		return l->ctyp;
 
-	if (l->ctyp == LNG && r->ctyp == INT) {
+	if (l->ctyp == T_LNG && r->ctyp == T_INT) {
 		l_extsw(r);
-		return LNG;
+		return T_LNG;
 	}
-	if (l->ctyp == INT && r->ctyp == LNG) {
+	if (l->ctyp == T_INT && r->ctyp == T_LNG) {
 		l_extsw(l);
-		return LNG;
+		return T_LNG;
 	}
-    if (l->ctyp == DBL && r->ctyp == INT) {
+    if (l->ctyp == T_DBL && r->ctyp == T_INT) {
 		d_swtof(r);
-		return DBL;
+		return T_DBL;
 	}
-    if (l->ctyp == DBL && r->ctyp == LNG) {
+    if (l->ctyp == T_DBL && r->ctyp == T_LNG) {
 		d_sltof(r);
-		return DBL;
+		return T_DBL;
 	}
 
 	if (op == OP_ADD) {
-		if (KIND(r->ctyp) == PTR) {
+	    // OPEN: handle double
+		if (KIND(r->ctyp) == T_PTR) {
 			t = l;
 			l = r;
 			r = t;
 		}
-		if (KIND(r->ctyp) == PTR) die("pointers added");
+		if (KIND(r->ctyp) == T_PTR) die("pointers added");
 		goto Scale;
 	}
 
 	if (op == OP_SUB) {
-		if (KIND(l->ctyp) != PTR) die("pointer substracted from integer");
-		if (KIND(r->ctyp) != PTR) goto Scale;
+	    // OPEN: handle double
+		if (KIND(l->ctyp) != T_PTR) die("pointer substracted from integer");
+		if (KIND(r->ctyp) != T_PTR) goto Scale;
 		if (l->ctyp != r->ctyp) die("non-homogeneous pointers in substraction");
-		return LNG;
+		return T_LNG;
 	}
 
 Scale:
+    // OPEN: handle double
 	sz = SIZE(DREF(l->ctyp));
 	if (r->t == Con)
 		r->u.n *= sz;
 	else {
 		if (irtyp(r->ctyp) != 'l') l_extsw(r);
-		fprintf(of, TEMP_5, tmp, sz);
+		fprintf(of, "\t" TEMP "%d =l mul %d, ", tmp, sz);
 		psymb(*r);
 		fprintf(of, "\n");
 		r->u.n = tmp++;
@@ -367,11 +370,9 @@ Scale:
 
 
 void load(Symb d, Symb s) {
-	char t;
 	fprintf(of, "\t");
 	psymb(d);
-	t = irtyp(d.ctyp);
-	fprintf(of, " =%c load%c ", t, t);
+	fprintf(of, " =%c load%c ", irtyp(d.ctyp), irtyp(d.ctyp));
 	psymb(s);
 	fprintf(of, "\n");
 }
@@ -382,9 +383,9 @@ void call(Node *n, Symb *sr) {
 	char *f = n->l->u.v;
 	if (varget(f)) {
 		ft = varget(f)->ctyp;
-		if (KIND(ft) != FUN) die("invalid call");
+		if (KIND(ft) != T_FUN) die("invalid call");
 	} else
-		ft = FUNC(INT);
+		ft = FUNC(T_INT);
 	sr->ctyp = DREF(ft);
 	for (a=n->r; a; a=a->r)
 		a->u.s = expr(a->l);
@@ -426,52 +427,60 @@ Symb expr(Node *n) {
 		abort();
 
 	case OP_OR:
+	    die("|| NYI");
+
 	case OP_AND:
 		l = lbl;
 		lbl += 3;
 		bool(n, l, l+1);
-		fprintf(of, "@L%d\n", l);
-		fprintf(of, "\tjmp @L%d\n", l+2);
-		fprintf(of, "@L%d\n", l+1);
-		fprintf(of, "\tjmp @L%d\n", l+2);
-		fprintf(of, "@L%d\n", l+2);
+		fprintf(of, LABEL "%d\n", l);
+		fprintf(of, "\tjmp " LABEL "%d\n", l+2);
+		fprintf(of, LABEL "%d\n", l+1);
+		fprintf(of, "\tjmp " LABEL "%d\n", l+2);
+		fprintf(of, LABEL "%d\n", l+2);
 		fprintf(of, "\t");
-		sr.ctyp = INT;
+		sr.ctyp = T_INT;
 		psymb(sr);
-		fprintf(of, " =w phi @L%d 1, @L%d 0\n", l, l+1);
+		fprintf(of, " =w phi " LABEL "%d 1, " LABEL "%d 0\n", l, l+1);
 		break;
 
-	case 'V':
+	case NAME:
 		s0 = lval(n);
 		sr.ctyp = s0.ctyp;
 		load(sr, s0);
 		break;
 
-	case 'N':
+	case LIT_DEC:
+		sr.t = Con;
+		sr.u.d = n->u.d;
+		sr.ctyp = T_DBL;
+		break;
+
+	case LIT_INT:
 		sr.t = Con;
 		sr.u.n = n->u.n;
-		sr.ctyp = INT;
+		sr.ctyp = T_INT;
 		break;
 
 	case 'S':
 		sr.t = Glo;
 		sr.u.n = n->u.n;
-		sr.ctyp = IDIR(INT);
+		sr.ctyp = IDIR(T_INT);
 		break;
 
 	case OP_CALL:
 		call(n, &sr);
 		break;
 
-	case '@':
+	case OP_DEREF:
 		s0 = expr(n->l);
-		if (KIND(s0.ctyp) != PTR)
+		if (KIND(s0.ctyp) != T_PTR)
 			die("dereference of a non-pointer");
 		sr.ctyp = DREF(s0.ctyp);
 		load(sr, s0);
 		break;
 
-	case 'A':
+	case OP_ADDR:
 		sr = lval(n->l);
 		sr.ctyp = IDIR(sr.ctyp);
 		break;
@@ -480,11 +489,11 @@ Symb expr(Node *n) {
 		s0 = expr(n->r);
 		s1 = lval(n->l);
 		sr = s0;
-		if (s1.ctyp == LNG && s0.ctyp == INT) l_extsw(&s0);
-		if (s1.ctyp == DBL && s0.ctyp == INT) d_swtof(&s0);
-		if (s1.ctyp == DBL && s0.ctyp == LNG) d_sltof(&s0);
-		if (s0.ctyp != IDIR(NIL) || KIND(s1.ctyp) != PTR)
-		if (s1.ctyp != IDIR(NIL) || KIND(s0.ctyp) != PTR)
+		if (s1.ctyp == T_LNG && s0.ctyp == T_INT) l_extsw(&s0);
+		if (s1.ctyp == T_DBL && s0.ctyp == T_INT) d_swtof(&s0);
+		if (s1.ctyp == T_DBL && s0.ctyp == T_LNG) d_sltof(&s0);
+		if (s0.ctyp != IDIR(T_VOID) || KIND(s1.ctyp) != T_PTR)
+		if (s1.ctyp != IDIR(T_VOID) || KIND(s0.ctyp) != T_PTR)
 		if (s1.ctyp != s0.ctyp) {
 		    ppCtype(s1.ctyp);
 		    fprintf(stderr, "%s = ", s1.u.v);
@@ -495,9 +504,9 @@ Symb expr(Node *n) {
 		fprintf(of, "\tstore%c ", irtyp(s1.ctyp));
 		goto Args;
 
-	case 'P':
-	case 'M':
-		o = n->op == 'P' ? OP_ADD : OP_SUB;
+	case OP_PP:
+	case OP_MM:
+		o = n->op == OP_PP ? OP_ADD : OP_SUB;
 		sl = lval(n->l);
 		s0.t = Tmp;
 		s0.u.n = tmp++;
@@ -505,7 +514,7 @@ Symb expr(Node *n) {
 		load(s0, sl);
 		s1.t = Con;
 		s1.u.n = 1;
-		s1.ctyp = INT;
+		s1.ctyp = T_INT;
 		goto Binop;
 
 	default:
@@ -516,7 +525,7 @@ Symb expr(Node *n) {
 		sr.ctyp = prom(o, &s0, &s1);
 		if (strchr("ne<l", n->op)) {
 			sprintf(ty, "%c", irtyp(sr.ctyp));
-			sr.ctyp = INT;
+			sr.ctyp = T_INT;
 		} else
 			strcpy(ty, "");
 		fprintf(of, "\t");
@@ -531,13 +540,13 @@ Symb expr(Node *n) {
 		break;
 
 	}
-	if (n->op == OP_SUB  &&  KIND(s0.ctyp) == PTR  &&  KIND(s1.ctyp) == PTR) {
-		fprintf(of, TEMP_6, tmp);
+	if (n->op == OP_SUB  &&  KIND(s0.ctyp) == T_PTR  &&  KIND(s1.ctyp) == T_PTR) {
+		fprintf(of, "\t" TEMP "%d =l div ", tmp);
 		psymb(sr);
 		fprintf(of, ", %d\n", SIZE(DREF(s0.ctyp)));
 		sr.u.n = tmp++;
 	}
-	if (n->op == 'P'  ||  n->op == 'M') {
+	if (n->op == OP_PP  ||  n->op == OP_MM) {
 		fprintf(of, "\tstore%c ", irtyp(sl.ctyp));
 		psymb(sr);
 		fprintf(of, ", ");
@@ -554,16 +563,16 @@ Symb lval(Node *n) {
 	switch (n->op) {
 	default:
 		die("invalid lvalue");
-	case 'V':
+	case NAME:
 		if (!varget(n->u.v)) {
 		    fprintf(stderr, "%s is not defined\n", n->u.v);
 		    die("undefined variable");
 		}
 		sr = *varget(n->u.v);
 		break;
-	case '@':
+	case OP_DEREF:
 		sr = expr(n->l);
-		if (KIND(sr.ctyp) != PTR) die("dereference of a non-pointer");
+		if (KIND(sr.ctyp) != T_PTR) die("dereference of a non-pointer");
 		sr.ctyp = DREF(sr.ctyp);
 		break;
 	}
@@ -578,20 +587,20 @@ void bool(Node *n, int lt, int lf) {
 		s = expr(n); /* TODO: insert comparison to 0 with proper type */
 		fprintf(of, "\tjnz ");
 		psymb(s);
-		fprintf(of, ", @L%d, @L%d\n", lt, lf);
+		fprintf(of, ", " LABEL "%d, " LABEL "%d\n", lt, lf);
 		break;
 	case OP_OR:
 		l = lbl;
 		lbl += 1;
 		bool(n->l, lt, l);
-		fprintf(of, "@L%d\n", l);
+		fprintf(of, LABEL "%d\n", l);
 		bool(n->r, lt, lf);
 		break;
 	case OP_AND:
 		l = lbl;
 		lbl += 1;
 		bool(n->l, l, lf);
-		fprintf(of, "@L%d\n", l);
+		fprintf(of, LABEL "%d\n", l);
 		bool(n->r, lt, lf);
 		break;
 	}
@@ -612,7 +621,7 @@ int stmt(Stmt *s, int b) {
 		return 1;
 	case Break:
 		if (b < 0) die("break not in loop");
-		fprintf(of, "\tjmp @L%d\n", b);
+		fprintf(of, "\tjmp " LABEL "%d\n", b);
 		return 1;
 	case Expr:
 		expr(s->p1);
@@ -623,24 +632,24 @@ int stmt(Stmt *s, int b) {
 		l = lbl;
 		lbl += 3;
 		bool(s->p1, l, l+1);
-		fprintf(of, "@L%d\n", l);
+		fprintf(of, LABEL "%d\n", l);
 		if (!(r=stmt(s->p2, b)))
 		if (s->p3)
-			fprintf(of, "\tjmp @L%d\n", l+2);
-		fprintf(of, "@L%d\n", l+1);
+			fprintf(of, "\tjmp " LABEL "%d\n", l+2);
+		fprintf(of, LABEL "%d\n", l+1);
 		if (s->p3)
 		if (!(r &= stmt(s->p3, b)))
-			fprintf(of, "@L%d\n", l+2);
+			fprintf(of, LABEL "%d\n", l+2);
 		return s->p3 && r;
 	case While:
 		l = lbl;
 		lbl += 3;
-		fprintf(of, "@L%d\n", l);
+		fprintf(of, LABEL "%d\n", l);
 		bool(s->p1, l+1, l+2);
-		fprintf(of, "@L%d\n", l+1);
+		fprintf(of, LABEL "%d\n", l+1);
 		if (!stmt(s->p2, l+2))
-			fprintf(of, "\tjmp @L%d\n", l);
-		fprintf(of, "@L%d\n", l+2);
+			fprintf(of, "\tjmp " LABEL "%d\n", l);
+		fprintf(of, LABEL "%d\n", l+2);
 		return 0;
 	}
 }
@@ -657,7 +666,7 @@ Node * mknode(char op, Node *l, Node *r) {
 
 Node * mkidx(Node *a, Node *i) {
 	Node *n = mknode(OP_ADD, a, i);
-	n = mknode('@', n, 0);
+	n = mknode(OP_DEREF, n, 0);
 	return n;
 }
 
@@ -665,7 +674,7 @@ Node * mkidx(Node *a, Node *i) {
 Node * mkneg(Node *n) {
 	static Node *z;
 	if (!z) {
-		z = mknode('N', 0, 0);
+		z = mknode(LIT_INT, 0, 0);
 		z->u.n = 0;
 	}
 	return mknode(OP_SUB, z, n);
@@ -682,8 +691,8 @@ Stmt * mkstmt(int t, void *p1, void *p2, void *p3) {
 }
 
 
-Node * param(char *v, unsigned ctyp, Node *pl) {
-	if (ctyp == NIL) die("invalid void declaration");
+Node * mkparam(char *v, unsigned ctyp, Node *pl) {
+	if (ctyp == T_VOID) die("invalid void declaration");
 	Node *n = mknode(0, 0, pl);
 	varadd(v, 0, ctyp);
 	strcpy(n->u.v, v);
@@ -704,7 +713,7 @@ Stmt * mkfor(Node *ini, Node *tst, Node *inc, Stmt *s) {
 	} else
 		s2 = s;
 	if (!tst) {
-		tst = mknode('N', 0, 0);
+		tst = mknode(LIT_INT, 0, 0);
 		tst->u.n = 1;
 	}
 	s2 = mkstmt(While, tst, s2, 0);
@@ -713,6 +722,65 @@ Stmt * mkfor(Node *ini, Node *tst, Node *inc, Stmt *s) {
 	else
 		return s2;
 }
+
+
+void initFunc() {
+    varclr(); tmp = 0;
+}
+
+
+void startFunc(int t, Node *fnname, Node *params) {
+	Symb *s;  Node *n;  int i, m;
+
+	varadd(fnname->u.v, 1, FUNC(T_INT));
+	fprintf(of, "export function w $%s(", fnname->u.v);
+	n = params;
+	if (n)
+		for (;;) {
+			s = varget(n->u.v);
+			fprintf(of, "%c ", irtyp(s->ctyp));
+			fprintf(of, TEMP "%d", tmp++);
+			n = n->r;
+			if (n)
+				fprintf(of, ", ");
+			else
+				break;
+		}
+	fprintf(of, ") {\n");
+	fprintf(of, LABEL "%d\n", lbl++);
+	for (i=0, n=params; n; i++, n=n->r) {
+		s = varget(n->u.v);
+		m = SIZE(s->ctyp);
+		fprintf(of, "\t" LOCAL "%s =l alloc%d %d\n", n->u.v, m, m);
+		fprintf(of, "\tstore%c " TEMP "%d", irtyp(s->ctyp), i);
+		fprintf(of, ", " LOCAL "%s\n", n->u.v);
+	}
+}
+
+void finishFunc(Stmt *s) {
+	if (!stmt(s, -1)) fprintf(of, "\tret 0\n");
+	fprintf(of, "}\n\n");
+}
+
+void emitFnDecls(int t, Node *varname) {
+    // OPEN: allow multiple names for each type
+	int s;  char *v;
+	if (t == T_VOID) die("invalid void declaration");
+	v = varname->u.v;
+	s = SIZE(t);
+	varadd(v, 0, t);
+	fprintf(of, "\t" LOCAL "%s =l alloc%d %d\n", v, s, s);
+}
+
+
+void collectGlobal(int t, Node *globalname) {
+	if (t == T_VOID) die("invalid void declaration");
+	if (nglo == NGlo) die("too many string literals");
+	ini[nglo] = alloc(sizeof "{ x 0 }");
+	sprintf(ini[nglo], "{ %c 0 }", irtyp(t));
+	varadd(globalname->u.v, nglo++, t);
+}
+
 
 
 %}
@@ -724,186 +792,150 @@ Stmt * mkfor(Node *ini, Node *tst, Node *inc, Stmt *s) {
 	unsigned u;
 }
 
-%token <n> TOK_INT
-%token <n> TOK_STR
-%token <n> IDENT
-%token TOK_PP TOK_MM SIZEOF
+%token <n> LIT_INT_  LIT_DEC_  LIT_STR_  NAME_
+%token PP_  MM_  SIZEOF_
 
-%token TVOID TINT TLNG TDBL
-%token IF ELSE WHILE FOR BREAK RETURN
-%token LINE_COMMENT
+%token T_VOID_  T_INT_  T_LNG_  T_DBL_
+%token IF_  ELSE_  WHILE_  FOR_  BREAK_  RETURN_
+%token LINE_COMMENT_
 
-%right TOK_EQUALS
-%left TOK_OR
-%left TOK_AND
-%left TOK_AMPERSAND
-%left TOK_EQ TOK_NE
-%left TOK_LANGLE TOK_RANGLE TOK_LE TOK_GE
-%left TOK_PLUS TOK_HYPHEN
-%left TOK_STAR TOK_SLASH TOK_PERCENT
+%nonassoc DOTS_
+%right EQUALS_
+%left OR_
+%left AND_
+%left AMPERSAND_
+%left EQ_  NE_
+%left ANGLE_L_  ANGLE_R_  LE_  GE_
+%left PLUS_  HYPHEN_
+%left STAR_  SLASH_  PERCENT_
 
 %type <u> type
-%type <s> stmt stmts
-%type <n> expr exp0 pref post arg0 arg1 par0 par1
+%type <s> stmt stmts open closed simple
+%type <n> expr_ expr pref post args_ args params_ params types_ types
 
 
 %%
 
-prog: func prog | fdcl prog | idcl prog | LINE_COMMENT prog |;
+prog: fdcl prog | gdcl prog | func prog | LINE_COMMENT_ prog |;
 
-fdcl: type IDENT '(' ')' ';'    {
-	varadd($2->u.v, 1, FUNC($1));
-};
 
-idcl: type IDENT ';'            {
-	if ($1 == NIL) die("invalid void declaration");
-	if (nglo == NGlo) die("too many string literals");
-	ini[nglo] = alloc(sizeof "{ x 0 }");
-	sprintf(ini[nglo], "{ %c 0 }", irtyp($1));
-	varadd($2->u.v, nglo++, $1);
-};
+type: type STAR_                    { $$ = IDIR($1); }
+    | T_INT_                        { $$ = T_INT; }
+    | T_LNG_                        { $$ = T_LNG; }
+    | T_DBL_                        { $$ = T_DBL; }
+    | T_VOID_                       { $$ = T_VOID; };
 
-init:                           {
-	varclr();
-	tmp = 0;
-};
 
-func: init prot '{' dcls stmts '}'  {
-	if (!stmt($5, -1)) fprintf(of, "\tret 0\n");
-	fprintf(of, "}\n\n");
-};
+fdcl: type NAME_ '(' types_ ')' ';' { varadd($2->u.v, 1, FUNC($1)); };
+types_: types                       { $$ = 0; }
+    |                               { $$ = 0; };
+types: type ',' types               { $$ = 0; }
+    | type                          { $$ = 0; };
 
-prot: IDENT '(' par0 ')'        {
-	Symb *s;
-	Node *n;
-	int t, m;
 
-	varadd($1->u.v, 1, FUNC(INT));
-	fprintf(of, "export function w $%s(", $1->u.v);
-	n = $3;
-	if (n)
-		for (;;) {
-			s = varget(n->u.v);
-			fprintf(of, "%c ", irtyp(s->ctyp));
-			fprintf(of, TEMP_7, tmp++);
-			n = n->r;
-			if (n)
-				fprintf(of, ", ");
-			else
-				break;
-		}
-	fprintf(of, ") {\n");
-	fprintf(of, "@L%d\n", lbl++);
-	for (t=0, n=$3; n; t++, n=n->r) {
-		s = varget(n->u.v);
-		m = SIZE(s->ctyp);
-		fprintf(of, VAR_2, n->u.v, m, m);
-		fprintf(of, TEMP_8, irtyp(s->ctyp), t);
-		fprintf(of, VAR_3, n->u.v);
-	}
-};
+gdcl: type NAME_ ';'                { collectGlobal($1, $2); };
 
-par0: par1
-    |                           { $$ = 0; };
 
-par1: type IDENT ',' par1       { $$ = param($2->u.v, $1, $4); }
-    | type IDENT                { $$ = param($2->u.v, $1, 0); };
+func: init prot '{' dcls stmts '}'  { finishFunc($5); };
+init:                               { initFunc(); };
+prot: NAME_ '(' params_ ')'         { startFunc(0, $1, $3); };
+params_: params
+    |                               { $$ = 0; };
+params: type NAME_ ',' params       { $$ = mkparam($2->u.v, $1, $4); }
+    | type NAME_                    { $$ = mkparam($2->u.v, $1, 0); };
+dcls: | dcls type NAME_ ';'         { emitFnDecls($2, $3); };
 
-dcls: | dcls type IDENT ';'     {
-	int s;
-	char *v;
-	if ($2 == NIL) die("invalid void declaration");
-	v = $3->u.v;
-	s = SIZE($2);
-	varadd(v, 0, $2);
-	fprintf(of, VAR_4, v, s, s);
-};
 
-type: type TOK_STAR             { $$ = IDIR($1); }
-    | TINT                      { $$ = INT; }
-    | TLNG                      { $$ = LNG; }
-    | TDBL                      { $$ = DBL; }
-    | TVOID                     { $$ = NIL; };
+stmts: stmts stmt                   { $$ = mkstmt(Seq, $1, $2, 0); /* https://en.wikipedia.org/wiki/Dangling_else */ }
+    |                               { $$ = 0; };
 
-stmt: ';'                                       { $$ = 0; }
-    | LINE_COMMENT                              { $$ = 0; }
-    | '{' stmts '}'                             { $$ = $2; }
-    | BREAK ';'                                 { $$ = mkstmt(Break, 0, 0, 0); }
-    | RETURN expr ';'                           { $$ = mkstmt(Ret, $2, 0, 0); }
-    | expr ';'                                  { $$ = mkstmt(Expr, $1, 0, 0); }
-    | WHILE '(' expr ')' stmt                   { $$ = mkstmt(While, $3, $5, 0); }
-    | IF '(' expr ')' stmt ELSE stmt            { $$ = mkstmt(If, $3, $5, $7); }
-    | IF '(' expr ')' stmt                      { $$ = mkstmt(If, $3, $5, 0); }
-    | FOR '(' exp0 ';' exp0 ';' exp0 ')' stmt   { $$ = mkfor($3, $5, $7, $9); };
+stmt: open                          { $$ = $1; }
+    | closed                        { $$ = $1; };
 
-stmts: stmts stmt               { $$ = mkstmt(Seq, $1, $2, 0); }
-    |                           { $$ = 0; };
+open: IF_ '(' expr ')' stmt                         { $$ = mkstmt(If, $3, $5, 0); }
+    | IF_ '(' expr ')' closed ELSE_ open            { $$ = mkstmt(If, $3, $5, $7); }
+    | WHILE_ '(' expr ')' open                      { $$ = mkstmt(While, $3, $5, 0); }
+    | FOR_ '(' expr_ ';' expr_ ';' expr_ ')' open   { $$ = mkfor($3, $5, $7, $9); };
+
+closed: simple
+    | IF_ '(' expr ')' closed ELSE_ closed          { $$ = mkstmt(If, $3, $5, $7); }
+    | WHILE_ '(' expr ')' closed                    { $$ = mkstmt(While, $3, $5, 0); }
+    | FOR_ '(' expr_ ';' expr_ ';' expr_ ')' closed { $$ = mkfor($3, $5, $7, $9); };
+
+simple: ';'                         { $$ = 0; }
+    | LINE_COMMENT_                 { $$ = 0; }
+    | '{' stmts '}'                 { $$ = $2; }
+    | BREAK_ ';'                    { $$ = mkstmt(Break, 0, 0, 0); }
+    | RETURN_ expr ';'              { $$ = mkstmt(Ret, $2, 0, 0); }
+    | expr ';'                      { $$ = mkstmt(Expr, $1, 0, 0); };
 
 expr: pref
-    | expr TOK_EQUALS expr      { $$ = mknode(OP_ASSIGN, $1, $3); }
-    | expr TOK_PLUS expr        { $$ = mknode(OP_ADD, $1, $3); }
-    | expr TOK_HYPHEN expr      { $$ = mknode(OP_SUB, $1, $3); }
-    | expr TOK_STAR expr        { $$ = mknode(OP_MUL, $1, $3); }
-    | expr TOK_SLASH expr       { $$ = mknode(OP_DIV, $1, $3); }
-    | expr TOK_PERCENT expr     { $$ = mknode(OP_REM, $1, $3); }
-    | expr TOK_LANGLE expr      { $$ = mknode(OP_LT, $1, $3); }
-    | expr TOK_RANGLE expr      { $$ = mknode(OP_LT, $3, $1); }
-    | expr TOK_LE expr          { $$ = mknode(OP_LE, $1, $3); }
-    | expr TOK_GE expr          { $$ = mknode(OP_LE, $3, $1); }
-    | expr TOK_EQ expr          { $$ = mknode(OP_EQ, $1, $3); }
-    | expr TOK_NE expr          { $$ = mknode(OP_NE, $1, $3); }
-    | expr TOK_AND expr         { $$ = mknode(OP_AND, $1, $3); }
-    | expr TOK_OR expr          { $$ = mknode(OP_OR, $1, $3); }
-    | expr TOK_AMPERSAND expr   { $$ = mknode(OP_BAND, $1, $3); };
+    | expr EQUALS_ expr             { $$ = mknode(OP_ASSIGN, $1, $3); }
+    | expr PLUS_ expr               { $$ = mknode(OP_ADD, $1, $3); }
+    | expr HYPHEN_ expr             { $$ = mknode(OP_SUB, $1, $3); }
+    | expr STAR_ expr               { $$ = mknode(OP_MUL, $1, $3); }
+    | expr SLASH_ expr              { $$ = mknode(OP_DIV, $1, $3); }
+    | expr PERCENT_ expr            { $$ = mknode(OP_REM, $1, $3); }
+    | expr ANGLE_L_ expr            { $$ = mknode(OP_LT, $1, $3); }
+    | expr ANGLE_R_ expr            { $$ = mknode(OP_LT, $3, $1); }
+    | expr LE_ expr                 { $$ = mknode(OP_LE, $1, $3); }
+    | expr GE_ expr                 { $$ = mknode(OP_LE, $3, $1); }
+    | expr EQ_ expr                 { $$ = mknode(OP_EQ, $1, $3); }
+    | expr NE_ expr                 { $$ = mknode(OP_NE, $1, $3); }
+    | expr AND_ expr                { $$ = mknode(OP_AND, $1, $3); }
+    | expr OR_ expr                 { $$ = mknode(OP_OR, $1, $3); }
+    | expr AMPERSAND_ expr          { $$ = mknode(OP_BAND, $1, $3); };
 
-exp0: expr
-    |                           { $$ = 0; };
+expr_: expr
+    |                               { $$ = 0; };
 
 pref: post
-    | TOK_HYPHEN pref           { $$ = mkneg($2); }
-    | TOK_STAR pref             { $$ = mknode('@', $2, 0); }
-    | TOK_AMPERSAND pref        { $$ = mknode('A', $2, 0); };
+    | HYPHEN_ pref                  { $$ = mkneg($2); }
+    | STAR_ pref                    { $$ = mknode(OP_DEREF, $2, 0); }
+    | AMPERSAND_ pref               { $$ = mknode(OP_ADDR, $2, 0); };
 
-post: TOK_INT
-    | TOK_STR
-    | IDENT
-    | SIZEOF '(' type ')'       { $$ = mknode('N', 0, 0); $$->u.n = SIZE($3); }
-    | '(' expr ')'              { $$ = $2; }
-    | IDENT '(' arg0 ')'        { $$ = mknode(OP_CALL, $1, $3); }
-    | post '[' expr ']'         { $$ = mkidx($1, $3); }
-    | post TOK_PP               { $$ = mknode('P', $1, 0); }
-    | post TOK_MM               { $$ = mknode('M', $1, 0); };
+post: LIT_INT_
+    | LIT_DEC_
+    | LIT_STR_
+    | NAME_
+    | SIZEOF_ '(' type ')'          { $$ = mknode(LIT_INT, 0, 0); $$->u.n = SIZE($3); }
+    | '(' expr ')'                  { $$ = $2; }
+    | NAME_ '(' args_ ')'           { $$ = mknode(OP_CALL, $1, $3); }
+    | post '[' expr ']'             { $$ = mkidx($1, $3); }
+    | post PP_                      { $$ = mknode(OP_PP, $1, 0); }
+    | post MM_                      { $$ = mknode(OP_MM, $1, 0); };
 
-arg0: arg1
-    |                           { $$ = 0; };
+args_ : args
+    |                               { $$ = 0; };
 
-arg1: expr                      { $$ = mknode(0, $1, 0); }
-    | expr ',' arg1             { $$ = mknode(0, $1, $3); };
+args: expr                          { $$ = mknode(0, $1, 0); }
+    | expr ',' args                 { $$ = mknode(0, $1, $3); };
 
 %%
 
 
-
+// OPEN: add char
 int yylex() {
 	struct {
 		char *s;
 		int t;
 	} kwds[] = {
-		{ "void", TVOID },
-		{ "int", TINT },
-		{ "long", TLNG },
-		{ "double", TDBL },
-		{ "if", IF },
-		{ "else", ELSE },
-		{ "for", FOR },
-		{ "while", WHILE },
-		{ "return", RETURN },
-		{ "break", BREAK },
-		{ "sizeof", SIZEOF },
+		{ "void", T_VOID_ },
+		{ "int", T_INT_ },
+		{ "long", T_LNG_ },
+		{ "double", T_DBL_ },
+		{ "if", IF_ },
+		{ "else", ELSE_ },
+		{ "for", FOR_ },
+		{ "while", WHILE_ },
+		{ "return", RETURN_ },
+		{ "break", BREAK_ },
+		{ "sizeof", SIZEOF_ },
 		{ 0, 0 }
 	};
-	int i, c, c2, n;
+	int i, c, c2, c3, n;
 	char v[NString], *p;
+	double d, s;
 
 	do {
 		c = getchar();
@@ -924,34 +956,51 @@ int yylex() {
 	if (c == EOF) return 0;
 
 	if (isdigit(c)) {
+	    // OPEN: use standard C to parse the numbers
 		n = 0;
 		do {
 			n *= 10;
 			n += c-'0';
 			c = getchar();
 		} while (isdigit(c));
-		ungetc(c, stdin);
-		yylval.n = mknode('N', 0, 0);
-		yylval.n->u.n = n;
-		return TOK_INT;
+		if (c == '.') {
+		    c = getchar();
+		    if (!isdigit(c)) die("invalid decimal");
+		    d = n;
+		    s = 1.0;
+            do {
+                s /= 10;
+                d += s * (c-'0');
+                c = getchar();
+            } while (isdigit(c));
+            ungetc(c, stdin);
+            yylval.n = mknode(LIT_DEC, 0, 0);
+            yylval.n->u.d = d;
+            return LIT_DEC_;
+		}
+		else {
+            ungetc(c, stdin);
+            yylval.n = mknode(LIT_INT, 0, 0);
+            yylval.n->u.n = n;
+    		return LIT_INT_;
+        }
 	}
 
-	if (isalpha(c)) {
+	if (isalpha(c) || c == '_') {
 		p = v;
 		do {
-			if (p == &v[NString-1])
-				die("ident too long");
+			if (p == &v[NString-1]) die("ident too long");
 			*p++ = c;
 			c = getchar();
-		} while (isalpha(c) || c == '_');
+		} while (isalnum(c) || c == '_');
 		*p = 0;
 		ungetc(c, stdin);
 		for (i=0; kwds[i].s; i++)
 			if (strcmp(v, kwds[i].s) == 0)
 				return kwds[i].t;
-		yylval.n = mknode('V', 0, 0);
+		yylval.n = mknode(NAME, 0, 0);
 		strcpy(yylval.n->u.v, v);
-		return IDENT;
+		return NAME_;
 	}
 
 	if (c == '"') {
@@ -998,40 +1047,48 @@ int yylex() {
 		ini[nglo] = p;
 		yylval.n = mknode('S', 0, 0);
 		yylval.n->u.n = nglo++;
-		return TOK_STR;
+		return LIT_STR_;
 	}
 
 	c2 = getchar();
 #define DI(a, b) a + b*256
 	switch (DI(c,c2)) {
-        case DI('!','='): return TOK_NE;
-        case DI('=','='): return TOK_EQ;
-        case DI('<','='): return TOK_LE;
-        case DI('>','='): return TOK_GE;
-        case DI('+','+'): return TOK_PP;
-        case DI('-','-'): return TOK_MM;
-        case DI('&','&'): return TOK_AND;
-        case DI('|','|'): return TOK_OR;
+        case DI('!','='): return NE_;
+        case DI('=','='): return EQ_;
+        case DI('<','='): return LE_;
+        case DI('>','='): return GE_;
+        case DI('+','+'): return PP_;
+        case DI('-','-'): return MM_;
+        case DI('&','&'): return AND_;
+        case DI('|','|'): return OR_;
         case DI('/','/'): {
             while ((c = getchar()) != '\n')
                 ;
             ungetc(c, stdin);
-            return LINE_COMMENT;
+            return LINE_COMMENT_;
+        }
+        case DI('.','.'): {
+            c3 = getchar();
+            if (c3 == '.') {
+                fprintf(stderr, "DOTS\n");
+                return DOTS_;
+            }
+            ungetc(c3, stdin);
         }
 	}
 #undef DI
 	ungetc(c2, stdin);
 
     switch (c) {
-        case '&': return TOK_AMPERSAND;         // can be address or bitwise and
-        case '*': return TOK_STAR;              // can be pointer or multiply
-        case '+': return TOK_PLUS;              // can be positive or add
-        case '-': return TOK_HYPHEN;            // can be negative or subtract
-        case '<': return TOK_LANGLE;
-        case '>': return TOK_RANGLE;
-        case '/': return TOK_SLASH;
-        case '=': return TOK_EQUALS;
-        case '%': return TOK_PERCENT;
+        case '&': return AMPERSAND_;         // can be address or bitwise and
+        case '*': return STAR_;              // can be pointer or multiply
+        case '+': return PLUS_;              // can be positive or add
+        case '-': return HYPHEN_;            // can be negative or subtract
+        case '<': return ANGLE_L_;
+        case '>': return ANGLE_R_;
+        case '/': return SLASH_;
+        case '=': return EQUALS_;
+        case '%': return PERCENT_;
     }
 
 	return c;
@@ -1050,6 +1107,6 @@ int main() {
 	nglo = 1;
 	if (yyparse() != 0) die("parse error");
 	for (i=1; i<nglo; i++)
-		fprintf(of, GLOBAL_2, i, ini[i]);
+		fprintf(of, "data " GLOBAL "%d = %s\n", i, ini[i]);
 	return 0;
 }
