@@ -1,0 +1,16 @@
+minc
+yacc
+qbe
+
+yacc.dSYM/
+minc.dSYM/
+
+y.*
+*.o
+*.p
+*.s
+
+.DS_Store
+
+
+queen2

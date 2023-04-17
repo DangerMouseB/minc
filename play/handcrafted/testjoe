@@ -1,0 +1,12 @@
+#!/bin/sh
+
+rm -f joe
+rm -f joe.s
+rm -f sally.s
+rm -f joe.o
+rm -f sally.o
+
+../qq joe.q
+../qq sally.q
+cc sally.o joe.o -o joe -lc
+./joe

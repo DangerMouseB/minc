@@ -1,0 +1,12 @@
+#!/bin/sh
+
+DIR=`cd $(dirname $0); pwd`
+SRC_HOME=$DIR
+
+rm -f $SRC_HOME/queen2
+rm -f $SRC_HOME/queen2.o
+rm -f $SRC_HOME/queen2.s
+
+../qq $SRC_HOME/queen2.q
+cc $SRC_HOME/queen2.o -o $SRC_HOME/queen2 -lc
+./queen2

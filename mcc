@@ -1,0 +1,51 @@
+#!/bin/sh
+
+DIR=`cd $(dirname $0); pwd`
+MMC=$DIR/minc
+
+usage()
+{
+  echo $flags
+	echo "usage: mcc [cc flags] file.c" >&2
+	exit 1
+}
+
+#for i
+#do
+#	case $i in
+#	-*)
+#		flags="$flags $i"
+#		;;
+#	*)
+#		if ! test -z $file
+#		then
+#			usage
+#		fi
+#		file=$i
+#		;;
+#	esac
+#done
+
+
+for i
+do
+  all="$all $i"
+  file=$i
+done
+
+if test -z $file
+then
+	usage
+fi
+
+file2="${file%.*}"
+cc -E $all -o $file2.p
+$MMC < $file2.p > $file2.q
+
+if test $? -ne 0
+then
+#	echo "error processing file $file" >&2
+	exit 1
+fi
+
+
