@@ -823,130 +823,466 @@ void collectGlobal(int t, Node *globalname) {
     unsigned u;
 }
 
-%token STRING_LITERAL SIZEOF
-%token <n> CONSTANT IDENTIFIER
-%token INC_OP  DEC_OP  SIZEOF
+%token <n> IDENTIFIER CONSTANT STRING_LITERAL
+%token SIZEOF
+%token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
+%token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
+%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN
+%token XOR_ASSIGN OR_ASSIGN TYPE_NAME
 
-%token EXTERN
+%token TYPEDEF EXTERN STATIC AUTO REGISTER INLINE RESTRICT
 %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
-%token LINE_COMMENT_
-%token ELLIPSIS
+%token BOOL COMPLEX IMAGINARY
+%token STRUCT UNION ENUM ELLIPSIS
 
-%token IF ELSE WHILE FOR BREAK RETURN
+%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 
-%right '='
-%left OR_OP
-%left AND_OP
-%left '&'
-%left EQ_OP  NE_OP
-%left '<'  '>'  LE_OP  GE_OP
-%left '+'  '-'
-%left '*'  '/'  '%'
-
-%type <u> type
-%type <s> stmt stmts open closed simple
-%type <n> expr_ expr pref post args_ args params_ params
-%type <t> types_ typesNoDots typesWithDots
-
-
+%start translation_unit
 %%
 
-prog: fdcl prog | gdcl prog | func prog | LINE_COMMENT_ prog |;
+primary_expression
+: IDENTIFIER
+| CONSTANT
+| STRING_LITERAL
+| '(' expression ')'
+;
+
+postfix_expression
+: primary_expression
+| postfix_expression '[' expression ']'
+| postfix_expression '(' ')'
+| postfix_expression '(' argument_expression_list ')'
+| postfix_expression '.' IDENTIFIER
+| postfix_expression PTR_OP IDENTIFIER
+| postfix_expression INC_OP
+| postfix_expression DEC_OP
+| '(' type_name ')' '{' initializer_list '}'
+| '(' type_name ')' '{' initializer_list ',' '}'
+;
+
+argument_expression_list
+: assignment_expression
+| argument_expression_list ',' assignment_expression
+;
+
+unary_expression
+: postfix_expression
+| INC_OP unary_expression
+| DEC_OP unary_expression
+| unary_operator cast_expression
+| SIZEOF unary_expression
+| SIZEOF '(' type_name ')'
+;
+
+unary_operator
+: '&'
+| '*'
+| '+'
+| '-'
+| '~'
+| '!'
+;
+
+cast_expression
+: unary_expression
+| '(' type_name ')' cast_expression
+;
+
+multiplicative_expression
+: cast_expression
+| multiplicative_expression '*' cast_expression
+| multiplicative_expression '/' cast_expression
+| multiplicative_expression '%' cast_expression
+;
+
+additive_expression
+: multiplicative_expression
+| additive_expression '+' multiplicative_expression
+| additive_expression '-' multiplicative_expression
+;
+
+shift_expression
+: additive_expression
+| shift_expression LEFT_OP additive_expression
+| shift_expression RIGHT_OP additive_expression
+;
+
+relational_expression
+: shift_expression
+| relational_expression '<' shift_expression
+| relational_expression '>' shift_expression
+| relational_expression LE_OP shift_expression
+| relational_expression GE_OP shift_expression
+;
+
+equality_expression
+: relational_expression
+| equality_expression EQ_OP relational_expression
+| equality_expression NE_OP relational_expression
+;
+
+and_expression
+: equality_expression
+| and_expression '&' equality_expression
+;
+
+exclusive_or_expression
+: and_expression
+| exclusive_or_expression '^' and_expression
+;
+
+inclusive_or_expression
+: exclusive_or_expression
+| inclusive_or_expression '|' exclusive_or_expression
+;
+
+logical_and_expression
+: inclusive_or_expression
+| logical_and_expression AND_OP inclusive_or_expression
+;
+
+logical_or_expression
+: logical_and_expression
+| logical_or_expression OR_OP logical_and_expression
+;
+
+conditional_expression
+: logical_or_expression
+| logical_or_expression '?' expression ':' conditional_expression
+;
+
+assignment_expression
+: conditional_expression
+| unary_expression assignment_operator assignment_expression
+;
+
+assignment_operator
+: '='
+| MUL_ASSIGN
+| DIV_ASSIGN
+| MOD_ASSIGN
+| ADD_ASSIGN
+| SUB_ASSIGN
+| LEFT_ASSIGN
+| RIGHT_ASSIGN
+| AND_ASSIGN
+| XOR_ASSIGN
+| OR_ASSIGN
+;
+
+expression
+: assignment_expression
+| expression ',' assignment_expression
+;
+
+constant_expression
+: conditional_expression
+;
+
+declaration
+: declaration_specifiers ';'
+| declaration_specifiers init_declarator_list ';'
+;
+
+declaration_specifiers
+: storage_class_specifier
+| storage_class_specifier declaration_specifiers
+| type_specifier
+| type_specifier declaration_specifiers
+| type_qualifier
+| type_qualifier declaration_specifiers
+| function_specifier
+| function_specifier declaration_specifiers
+;
+
+init_declarator_list
+: init_declarator
+| init_declarator_list ',' init_declarator
+;
+
+init_declarator
+: declarator
+| declarator '=' initializer
+;
+
+storage_class_specifier
+: TYPEDEF
+| EXTERN
+| STATIC
+| AUTO
+| REGISTER
+;
+
+type_specifier
+: VOID
+| CHAR
+| SHORT
+| INT
+| LONG
+| FLOAT
+| DOUBLE
+| SIGNED
+| UNSIGNED
+| BOOL
+| COMPLEX
+| IMAGINARY
+| struct_or_union_specifier
+| enum_specifier
+| TYPE_NAME
+;
+
+struct_or_union_specifier
+: struct_or_union IDENTIFIER '{' struct_declaration_list '}'
+| struct_or_union '{' struct_declaration_list '}'
+| struct_or_union IDENTIFIER
+;
+
+struct_or_union
+: STRUCT
+| UNION
+;
+
+struct_declaration_list
+: struct_declaration
+| struct_declaration_list struct_declaration
+;
+
+struct_declaration
+: specifier_qualifier_list struct_declarator_list ';'
+;
+
+specifier_qualifier_list
+: type_specifier specifier_qualifier_list
+| type_specifier
+| type_qualifier specifier_qualifier_list
+| type_qualifier
+;
+
+struct_declarator_list
+: struct_declarator
+| struct_declarator_list ',' struct_declarator
+;
+
+struct_declarator
+: declarator
+| ':' constant_expression
+| declarator ':' constant_expression
+;
+
+enum_specifier
+: ENUM '{' enumerator_list '}'
+| ENUM IDENTIFIER '{' enumerator_list '}'
+| ENUM '{' enumerator_list ',' '}'
+| ENUM IDENTIFIER '{' enumerator_list ',' '}'
+| ENUM IDENTIFIER
+;
+
+enumerator_list
+: enumerator
+| enumerator_list ',' enumerator
+;
+
+enumerator
+: IDENTIFIER
+| IDENTIFIER '=' constant_expression
+;
+
+type_qualifier
+: CONST
+| RESTRICT
+| VOLATILE
+;
+
+function_specifier
+: INLINE
+;
+
+declarator
+: pointer direct_declarator
+| direct_declarator
+;
 
 
-type: type '*'                      { $$ = IDIR($1); }
-    | INT                           { $$ = T_INT; }
-    | LONG                          { $$ = T_LNG; }
-    | DOUBLE                        { $$ = T_DBL; }
-    | VOID                          { $$ = T_VOID; };
+direct_declarator
+: IDENTIFIER
+| '(' declarator ')'
+| direct_declarator '[' type_qualifier_list assignment_expression ']'
+| direct_declarator '[' type_qualifier_list ']'
+| direct_declarator '[' assignment_expression ']'
+| direct_declarator '[' STATIC type_qualifier_list assignment_expression ']'
+| direct_declarator '[' type_qualifier_list STATIC assignment_expression ']'
+| direct_declarator '[' type_qualifier_list '*' ']'
+| direct_declarator '[' '*' ']'
+| direct_declarator '[' ']'
+| direct_declarator '(' parameter_type_list ')'
+| direct_declarator '(' identifier_list ')'
+| direct_declarator '(' ')'
+;
+
+pointer
+: '*'
+| '*' type_qualifier_list
+| '*' pointer
+| '*' type_qualifier_list pointer
+;
+
+type_qualifier_list
+: type_qualifier
+| type_qualifier_list type_qualifier
+;
 
 
-fdcl: type IDENTIFIER '(' types_ ')' ';' { varadd($2->u.v, 1, FUNC($1)); };
-types_: typesNoDots                 
-    | typesWithDots                 
-    |                               { $$ = 0; };
-typesNoDots: type ',' typesNoDots   { $$ = newTLLHead($1, $3); }
-    | type                          { $$ = newTLLHead($1, 0); };
-typesWithDots: ELLIPSIS             { $$ = newTLLHead(-1, 0); }
-    | type ',' typesWithDots        { $$ = newTLLHead($1, $3); };
+parameter_type_list
+: parameter_list
+| parameter_list ',' ELLIPSIS
+;
 
+parameter_list
+: parameter_declaration
+| parameter_list ',' parameter_declaration
+;
 
-gdcl: type IDENTIFIER ';'           { collectGlobal($1, $2); };
+parameter_declaration
+: declaration_specifiers declarator
+| declaration_specifiers abstract_declarator
+| declaration_specifiers
+;
 
+identifier_list
+: IDENTIFIER
+| identifier_list ',' IDENTIFIER
+;
 
-func: init prot '{' dcls stmts '}'  { finishFunc($5); };
-init:                               { initFunc(); };
-prot: IDENTIFIER '(' params_ ')'    { startFunc(0, $1, $3); };
-params_: params
-    |                               { $$ = 0; };
-params: type IDENTIFIER ',' params  { $$ = mkparam($2->u.v, $1, $4); }
-    | type IDENTIFIER               { $$ = mkparam($2->u.v, $1, 0); };
-dcls: | dcls type IDENTIFIER ';'    { emitLocalDecl($2, $3); };
+type_name
+: specifier_qualifier_list
+| specifier_qualifier_list abstract_declarator
+;
 
+abstract_declarator
+: pointer
+| direct_abstract_declarator
+| pointer direct_abstract_declarator
+;
 
-stmts: stmts stmt                   { $$ = newstmt(Seq, $1, $2, 0); /* https://en.wikipedia.org/wiki/Dangling_else */ }
-    |                               { $$ = 0; };
+direct_abstract_declarator
+: '(' abstract_declarator ')'
+| '[' ']'
+| '[' assignment_expression ']'
+| direct_abstract_declarator '[' ']'
+| direct_abstract_declarator '[' assignment_expression ']'
+| '[' '*' ']'
+| direct_abstract_declarator '[' '*' ']'
+| '(' ')'
+| '(' parameter_type_list ')'
+| direct_abstract_declarator '(' ')'
+| direct_abstract_declarator '(' parameter_type_list ')'
+;
 
-stmt: open
-    | closed;
+initializer
+: assignment_expression
+| '{' initializer_list '}'
+| '{' initializer_list ',' '}'
+;
 
-open: IF '(' expr ')' stmt                          { $$ = newstmt(If, $3, $5, 0); }
-    | IF '(' expr ')' closed ELSE open              { $$ = newstmt(If, $3, $5, $7); }
-    | WHILE '(' expr ')' open                       { $$ = newstmt(While, $3, $5, 0); }
-    | FOR '(' expr_ ';' expr_ ';' expr_ ')' open    { $$ = mkfor($3, $5, $7, $9); };
+initializer_list
+: initializer
+| designation initializer
+| initializer_list ',' initializer
+| initializer_list ',' designation initializer
+;
 
-closed: simple
-    | IF '(' expr ')' closed ELSE closed            { $$ = newstmt(If, $3, $5, $7); }
-    | WHILE '(' expr ')' closed                     { $$ = newstmt(While, $3, $5, 0); }
-    | FOR '(' expr_ ';' expr_ ';' expr_ ')' closed  { $$ = mkfor($3, $5, $7, $9); };
+designation
+: designator_list '='
+;
 
-simple: ';'                         { $$ = 0; }
-    | LINE_COMMENT_                 { $$ = 0; }
-    | '{' stmts '}'                 { $$ = $2; }
-    | BREAK ';'                     { $$ = newstmt(Break, 0, 0, 0); }
-    | RETURN expr ';'               { $$ = newstmt(Ret, $2, 0, 0); }
-    | expr ';'                      { $$ = newstmt(Expr, $1, 0, 0); };
+designator_list
+: designator
+| designator_list designator
+;
 
-expr: pref
-    | expr '=' expr                 { $$ = newNode(OP_ASSIGN, $1, $3); }
-    | expr '+' expr                 { $$ = newNode(OP_ADD, $1, $3); }
-    | expr '-' expr                 { $$ = newNode(OP_SUB, $1, $3); }
-    | expr '*' expr                 { $$ = newNode(OP_MUL, $1, $3); }
-    | expr '/' expr                 { $$ = newNode(OP_DIV, $1, $3); }
-    | expr '%' expr                 { $$ = newNode(OP_REM, $1, $3); }
-    | expr '<' expr                 { $$ = newNode(OP_LT, $1, $3); }
-    | expr '>' expr                 { $$ = newNode(OP_LT, $3, $1); }
-    | expr LE_OP expr               { $$ = newNode(OP_LE, $1, $3); }
-    | expr GE_OP expr               { $$ = newNode(OP_LE, $3, $1); }
-    | expr EQ_OP expr               { $$ = newNode(OP_EQ, $1, $3); }
-    | expr NE_OP expr               { $$ = newNode(OP_NE, $1, $3); }
-    | expr AND_OP expr              { $$ = newNode(OP_AND, $1, $3); }
-    | expr OR_OP expr               { $$ = newNode(OP_OR, $1, $3); }
-    | expr '&' expr                 { $$ = newNode(OP_BAND, $1, $3); };
+designator
+: '[' constant_expression ']'
+| '.' IDENTIFIER
+;
 
-expr_: expr
-    |                               { $$ = 0; };
+statement
+: labeled_statement
+| compound_statement
+| expression_statement
+| selection_statement
+| iteration_statement
+| jump_statement
+;
 
-pref: post
-    | '-' pref                      { $$ = mkneg($2); }
-    | '*' pref                      { $$ = newNode(OP_DEREF, $2, 0); }
-    | '&' pref                      { $$ = newNode(OP_ADDR, $2, 0); };
+labeled_statement
+: IDENTIFIER ':' statement
+| CASE constant_expression ':' statement
+| DEFAULT ':' statement
+;
 
-post: CONSTANT
-    | STRING_LITERAL
-    | IDENTIFIER
-    | SIZEOF '(' type ')'           { $$ = newNode(LIT_INT, 0, 0); $$->u.n = SIZE($3); }
-    | '(' expr ')'                  { $$ = $2; }
-    | IDENTIFIER '(' args_ ')'      { $$ = newNode(OP_CALL, $1, $3); }
-    | post '[' expr ']'             { $$ = mkidx($1, $3); }
-    | post INC_OP                   { $$ = newNode(OP_PP, $1, 0); }
-    | post DEC_OP                   { $$ = newNode(OP_MM, $1, 0); };
+compound_statement
+: '{' '}'
+| '{' block_item_list '}'
+;
 
-args_ : args
-    |                               { $$ = 0; };
+block_item_list
+: block_item
+| block_item_list block_item
+;
 
-args: expr                          { $$ = newNode(0, $1, 0); }
-    | expr ',' args                 { $$ = newNode(0, $1, $3); };
+block_item
+: declaration
+| statement
+;
+
+expression_statement
+: ';'
+| expression ';'
+;
+
+selection_statement
+: IF '(' expression ')' statement
+| IF '(' expression ')' statement ELSE statement
+| SWITCH '(' expression ')' statement
+;
+
+iteration_statement
+: WHILE '(' expression ')' statement
+| DO statement WHILE '(' expression ')' ';'
+| FOR '(' expression_statement expression_statement ')' statement
+| FOR '(' expression_statement expression_statement expression ')' statement
+| FOR '(' declaration expression_statement ')' statement
+| FOR '(' declaration expression_statement expression ')' statement
+;
+
+jump_statement
+: GOTO IDENTIFIER ';'
+| CONTINUE ';'
+| BREAK ';'
+| RETURN ';'
+| RETURN expression ';'
+;
+
+translation_unit
+: external_declaration
+| translation_unit external_declaration
+;
+
+external_declaration
+: function_definition
+| declaration
+;
+
+function_definition
+: declaration_specifiers declarator declaration_list compound_statement
+| declaration_specifiers declarator compound_statement
+;
+
+declaration_list
+: declaration
+| declaration_list declaration
+;
+
 
 %%
 #include <stdio.h>

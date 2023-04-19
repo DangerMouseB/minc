@@ -1,11 +1,12 @@
 #include "fred.h"
-//int printf(char*, ...);
+
 //int **newBoard();
 
 #define FMT_FLOAT "%f"
 
 int Q;  int nSolutions;
 
+//void
 print(int **board) {
 	int i;  int j;
 	for (j=0; j<Q; j++) {
@@ -19,6 +20,7 @@ print(int **board) {
 	printf("\n");
 }
 
+//int
 chk(int i, int j, int **board) {
 	int k;  int r;
 	for (r=k=0; k<Q; k++) {
@@ -36,6 +38,7 @@ chk(int i, int j, int **board) {
 	return r;
 }
 
+//void
 go(int j, int **board) {
 	int i;
 	if (j == Q) {
@@ -58,6 +61,7 @@ go(int j, int **board) {
 //    return answer;
 //}
 
+//int
 main(int ac, void **av) {
 	int i;  int **board;  double a;
     a = 3;          // line comments work now
@@ -72,5 +76,5 @@ main(int ac, void **av) {
 		board[i] = calloc(Q, sizeof(int));
 	go(0, board);
 	printf("found %d solutions\n", nSolutions);
-    printf("my float " "%f" "\n", a);
+    printf("my float " FMT_FLOAT "\n", a);
 }

@@ -1,9 +1,11 @@
+minc99
 minc
 yacc
 qbe
 
 yacc.dSYM/
 minc.dSYM/
+minc99.dSYM/
 
 y.*
 *.o
@@ -12,5 +14,6 @@ y.*
 
 .DS_Store
 
-
 queen2
+
+.idea/
