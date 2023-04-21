@@ -139,8 +139,8 @@ export function w $chk(w %t0, w %t1, l %t2) {
 	%t74 =w sub %t75, %t76
 	%t72 =w cslew 0, %t74
 	%t66 =w and %t67, %t72
-	jnz %t66, @L17, @L18
-@L17
+	jnz %t66, @L16, @L17
+@L16
 	%t79 =w loadw %_r
 	%t84 =l loadl %_board
 	%t86 =w loadw %_i
@@ -159,7 +159,7 @@ export function w $chk(w %t0, w %t1, l %t2) {
 	%t80 =w loadw %t81
 	%t78 =w add %t79, %t80
 	storew %t78, %_r
-@L18
+@L17
 	%t99 =w loadw %_i
 	%t100 =w loadw %_k
 	%t98 =w sub %t99, %t100
@@ -170,8 +170,8 @@ export function w $chk(w %t0, w %t1, l %t2) {
 	%t105 =w loadw $g1
 	%t101 =w csltw %t102, %t105
 	%t95 =w and %t96, %t101
-	jnz %t95, @L20, @L21
-@L20
+	jnz %t95, @L18, @L19
+@L18
 	%t108 =w loadw %_r
 	%t113 =l loadl %_board
 	%t115 =w loadw %_i
@@ -190,7 +190,7 @@ export function w $chk(w %t0, w %t1, l %t2) {
 	%t109 =w loadw %t110
 	%t107 =w add %t108, %t109
 	storew %t107, %_r
-@L21
+@L19
 	%t128 =w loadw %_i
 	%t129 =w loadw %_k
 	%t127 =w sub %t128, %t129
@@ -200,8 +200,8 @@ export function w $chk(w %t0, w %t1, l %t2) {
 	%t132 =w sub %t133, %t134
 	%t130 =w cslew 0, %t132
 	%t124 =w and %t125, %t130
-	jnz %t124, @L23, @L24
-@L23
+	jnz %t124, @L20, @L21
+@L20
 	%t137 =w loadw %_r
 	%t142 =l loadl %_board
 	%t144 =w loadw %_i
@@ -220,7 +220,7 @@ export function w $chk(w %t0, w %t1, l %t2) {
 	%t138 =w loadw %t139
 	%t136 =w add %t137, %t138
 	storew %t136, %_r
-@L24
+@L21
 	%t154 =w loadw %_k
 	%t153 =w add %t154, 1
 	storew %t153, %_k
@@ -231,7 +231,7 @@ export function w $chk(w %t0, w %t1, l %t2) {
 }
 
 export function w $go(w %t0, l %t1) {
-@L26
+@L22
 	%_j =l alloc4 4
 	storew %t0, %_j
 	%_board =l alloc8 8
@@ -240,29 +240,29 @@ export function w $go(w %t0, l %t1) {
 	%t3 =w loadw %_j
 	%t4 =w loadw $g1
 	%t2 =w ceqw %t3, %t4
-	jnz %t2, @L27, @L28
-@L27
+	jnz %t2, @L23, @L24
+@L23
 	%t6 =l loadl %_board
 	%t5 =w call $print(l %t6, ...)
 	%t8 =w loadw $g2
 	%t7 =w add %t8, 1
 	storew %t7, $g2
 	ret 0
-@L28
+@L24
 	storew 0, %_i
-@L30
+@L25
 	%t13 =w loadw %_i
 	%t14 =w loadw $g1
 	%t12 =w csltw %t13, %t14
-	jnz %t12, @L31, @L32
-@L31
+	jnz %t12, @L26, @L27
+@L26
 	%t17 =w loadw %_i
 	%t18 =w loadw %_j
 	%t19 =l loadl %_board
 	%t16 =w call $chk(w %t17, w %t18, l %t19, ...)
 	%t15 =w ceqw %t16, 0
-	jnz %t15, @L33, @L34
-@L33
+	jnz %t15, @L28, @L29
+@L28
 	%t25 =l loadl %_board
 	%t26 =w loadw %_i
 	%t27 =l extsw %t26
@@ -293,17 +293,17 @@ export function w $go(w %t0, l %t1) {
 	%t49 =w loadw %t39
 	%t38 =w sub %t49, 1
 	storew %t38, %t39
-@L34
+@L29
 	%t51 =w loadw %_i
 	%t50 =w add %t51, 1
 	storew %t50, %_i
-	jmp @L30
-@L32
+	jmp @L25
+@L27
 	ret 0
 }
 
 export function w $main(w %t0, l %t1) {
-@L36
+@L30
 	%_ac =l alloc4 4
 	storew %t0, %_ac
 	%_av =l alloc8 8
@@ -320,24 +320,24 @@ export function w $main(w %t0, l %t1) {
 	storew 8, $g1
 	%t14 =w loadw %_ac
 	%t12 =w cslew 2, %t14
-	jnz %t12, @L37, @L38
-@L37
+	jnz %t12, @L31, @L32
+@L31
 	%t19 =l loadl %_av
 	%t18 =l add %t19, 8
 	%t17 =l loadl %t18
 	%t16 =w call $atoi(l %t17, ...)
 	storew %t16, $g1
-@L38
+@L32
 	%t23 =w loadw $g1
 	%t22 =l call $calloc(w %t23, w 8, ...)
 	storel %t22, %_board
 	storew 0, %_i
-@L40
+@L33
 	%t28 =w loadw %_i
 	%t29 =w loadw $g1
 	%t27 =w csltw %t28, %t29
-	jnz %t27, @L41, @L42
-@L41
+	jnz %t27, @L34, @L35
+@L34
 	%t32 =w loadw $g1
 	%t31 =l call $calloc(w %t32, w 4, ...)
 	%t35 =l loadl %_board
@@ -349,8 +349,8 @@ export function w $main(w %t0, l %t1) {
 	%t40 =w loadw %_i
 	%t39 =w add %t40, 1
 	storew %t39, %_i
-	jmp @L40
-@L42
+	jmp @L33
+@L35
 	%t43 =l loadl %_board
 	%t41 =w call $go(w 0, l %t43, ...)
 	%t46 =w loadw $g2

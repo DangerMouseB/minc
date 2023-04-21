@@ -1,62 +1,37 @@
-mmul()
+#include "fred.h"
 
-
-void *calloc();
-
-int Q;
-int N;
-
-print(int **board) {
-	int x;
-	int y;
-
-	for (y=0; y<Q; y++) {
-		for (x=0; x<Q; x++)
-			if (board[x][y])
-				printf(" Q");
-			else
-				printf(" .");
-		printf("\n");
-	}
-	printf("\n");
+double scalarProduct(double *rowA, double **B, int mA, int j) {
+    // A and B are n x m
+    double answer = 0;
+    for (int k=0; k < mA; k++){
+        answer += rowA[k] * B[k][j];
+    }
+    return answer;
 }
 
-chk(int x, int y, int **board) {
-	int i;
-	int r;
-
-	for (r=i=0; i<Q; i++) {
-		r = r + board[x][i];
-		r = r + board[i][y];
-		if (x+i < Q & y+i < Q)
-			r = r + board[x+i][y+i];
-		if (x+i < Q & y-i >= 0)
-			r = r + board[x+i][y-i];
-		if (x-i >= 0 & y+i < Q)
-			r = r + board[x-i][y+i];
-		if (x-i >= 0 & y-i >= 0)
-			r = r + board[x-i][y-i];
-	}
-	return r;
+int mmul(double **A, double **B, int nA, int mA, int mB, double **out) {
+    for (int i=0; i < nA; i++) {
+        for (int j=0; j < mB; j++) {
+            out[i][j] = scalarProduct(A[i], B, mA, j);
+        }
+    }
+    return 0;
 }
 
-go(int y, int **board) {
-	int x;
-
-	if (y == Q) {
-		print(board);
-		N++;
-		return 0;
-	}
-	for (x=0; x<Q; x++)
-		if (chk(x, y, board) == 0) {
-			board[x][y]++;
-			go(y+1, board);
-			board[x][y]--;
-		}
+int mmul2(double **A, double **B, int nA, int mA, int mB, double **out) {
+    for (int i=0; i < nA; i++) {
+        for (int j=0; j < mB; j++) {
+            out[i][j] = 0;
+            double *rowA = A[i];
+            for (int k=0; k < mA; k++){
+                out[i][j] += rowA[k] * B[k][j];
+            }
+        }
+    }
+    return 0;
 }
 
-main(int ac, void **av) {
+int main(int ac, void **av) {
 	int i;
     int **board;
 
@@ -69,6 +44,4 @@ main(int ac, void **av) {
 	go(0, board);
 	printf("found %d solutions\n", N);
 }
-
-
 

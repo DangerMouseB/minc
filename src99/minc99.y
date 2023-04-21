@@ -1,16 +1,93 @@
 %{
+/*
+// ---------------------------------------------------------------------------------------------------------------------
+//
+//                             Copyright (c) 2023 David Briant. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for
+// the specific language governing permissions and limitations under the License.
+//
+// ---------------------------------------------------------------------------------------------------------------------
+
+
+ *** OVERVIEW ***
+
+ minc (i.e. minimal C) is derrived from minic by Quentin Carbonneaux
+
+ It is supposed to be useful in exploring how to generate IR - the basics for doing C but also as a starting point
+ for higher level ideas - e.g. inlining, multidispatch, exception handling, and so on.
+
+ The code here should be simple (in the Rich Hickey sense) and easy to understand.
+
+ The yacc grammar was replaced with a popular one found here https://www.quut.com/c/ANSI-C-grammar-y-1999.html.
+
+ Stmt and Node were merged.
+
+ We won't implement the full C99 standard but I'm a firm be believer in designing for the future even whilst
+ implementing for the now. I found minic hard to extend as the yacc grammar was bound into the implementation types.
+
+ We will continue to use the YACC implementation Quentin used.
+
+ * to be extendable in ways that don't confirm to the standard such as:
+    * adding bones style memory management based on stack, sratch and heap
+    * add rust borrow style
+    * add bones types
+    * add logging for debugging in the background
+
+ We would like to be able to use this in Python so will need to rework the memory management and fully clean up. For
+ speed we could put out globals in one arena, and create a new arena for each function. Then free each arena in
+ one go. Pyminc would take in C99 code, and output linked binary into memory to be v=called via ctypes. We don't
+ need to call into it from C but I supposed that might be possible. Would need to understand linkers and loaders.
+ Pyminc should also output QBE IR and asm.
+
+
+
+
+ *** NAMING CONVENTION ***
+
+ TOKEN            (including T_TYPENAME_)
+ OP_OPERATION     (e.g. OP_ADD, except NAME, LIT_INT, LIT_DEC, LIT_STR)
+ T_TYPE
+
+
+
+ *** NOTES ***
+
+ OPEN: move the global variables into a struct? Actually we only need to do that if we want the compiler to be
+ reentrant in Python. Which we probably don't need.
+
+
+ minc stuff - hide as much as possible
+ c stuff
+ qbe ir stuff
+
+
+*/
+
+
 /*Beginning of C declarations*/
 
-// NAMING CONVENTION
-// TOKEN            (including T_TYPENAME_)
-// OP_OPERATION     (e.g. OP_ADD, except NAME, LIT_INT, LIT_DEC, LIT_STR)
-// T_TYPE
 
 
+// minc
+
+#include <stdarg.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum {
+    lex = 1,
+    parse = 2,
+    emit =4,
+    info = 8,
+    error = 16,
+};
 
 enum {
     NString = 32,
@@ -19,8 +96,38 @@ enum {
     NStr = 256,
 };
 
+typedef struct VarEntry {
+    char v[NString];
+    unsigned ctyp;
+    int glo;
+} VarEntry;
+
+int gLevel;
+FILE *of;
+int line, lbl, tmp, nglo;
+char *globals[NGlo];
+VarEntry varh[NVar];
+char srcFfn[1000];     // should be long enough for a filename
+
+int yylex(void);
+void yyerror(char const *);
+
+unsigned hash(char *s);
+void * alloc(size_t s);
+void die(char *s, ...);
+void varclr();
+void varadd(char *v, int glo, unsigned ctyp);
+void PP(int level, char *msg, ...);
+void putq(char *src, ...);
+
+
+
+// C and QBE IR
+
+
 enum {
     T_VOID,
+    T_CHR,
     T_INT,
     T_LNG,
     T_DBL,
@@ -38,6 +145,21 @@ enum {
 	8                                               \
 )))
 
+enum op {
+    NAME = 86,
+    If = 128,
+    IfElse = 129,
+    Else = 130,
+    While = 131,
+    Expr = 132,
+    Break = 133,
+    Ret = 134,
+    Seq = 135,
+    Ptr = 136,
+    ADD_EQ = 137,
+    SUB_EQ = 138,
+};
+
 #define OP_CALL 'C'
 #define OP_ASSIGN '='
 
@@ -47,6 +169,7 @@ enum {
 #define OP_LT   '<'
 #define OP_AND  'a'
 #define OP_OR   'o'
+#define OP_NOT  '!'
 
 #define OP_BAND '&'
 #define OP_BOR  '|'
@@ -62,231 +185,143 @@ enum {
 #define OP_DEREF '@'
 #define OP_ADDR  'A'
 
-#define OP_PP   'P'
-#define OP_MM   'M'
+#define OP_INC  'P'
+#define OP_DEC  'M'
 
-#define NAME    'V'
 #define LIT_INT 'N'
 #define LIT_DEC 'D'
 
 
-enum {
-    L_LEX = 1,
-    L_PARSE = 2,
-    L_EMIT = 3,
-};
-
-int LOG = L_LEX | L_PARSE | L_EMIT;
-
-
-void ppCtype(unsigned long t) {
-    int n = 0, i;
-    while (t > 7) {
-        n++;
-        t = DREF(t);
-    }
-    switch (t) {
-        case T_VOID:
-            fprintf(stderr, "void ");
-            break;
-        case T_INT:
-            fprintf(stderr, "int ");
-            break;
-        case T_LNG:
-            fprintf(stderr, "long ");
-            break;
-        case T_DBL:
-            fprintf(stderr, "double ");
-            break;
-        case T_FUN:
-            fprintf(stderr, "() ");
-            break;
-        default:
-            fprintf(stderr, "%lu", t);
-    }
-    for (i=0; i<n; i++) {
-        fprintf(stderr, "*");
-    }
-    return;
-}
+#define GLOBAL  "$g"
+#define TEMP    "%%t"
+#define LOCAL   "%%_"
+#define LABEL   "@L"
 
 
 
-#define GLOBAL "$g"
-#define TEMP "%%t"
-#define LOCAL "%%_"
-#define LABEL "@L"
-
-
-typedef struct Node Node;
-typedef struct Symb Symb;
-typedef struct Stmt Stmt;
-typedef struct TLLHead TLLHead;
-
-
-
-int yylex(void);
-void yyerror(char const *);
-Symb emitexpr(Node *);
-Symb lval(Node *);
-void emitboolop(Node *, int, int);
-void * alloc(size_t s);
-
-
-
-struct Symb {
+typedef struct Symb {
     enum {
         Con,
         Tmp,
         Var,
         Glo,
-    } t;
+    } t;                    // 4
     union {
         int n;
         char v[NString];
         double d;
-    } u;
-    unsigned long ctyp;
+    } u;                    // 4 | 32 | 8 = 32
+    unsigned long ctyp;     // 8
+} Symb;
+
+
+typedef struct Node Node;
+struct Node {               // 64 bytes
+    int op;                 // 4
+    Symb s;                 // 4 + 32 + 8
+    Node *l, *r;            // 8 + 8
 };
+Node * node(int op, Node *l, Node *r);
+Node * bindl(Node *n, Node *l, int lineno);
+Node * bindr(Node *n, Node *r, int lineno);
+Node * bindlr(Node *n, Node *l, Node *r, int lineno);
 
 
+
+// OPEN: remove this by changing the logic that needed this to using node
+typedef struct TLLHead TLLHead;
 struct TLLHead {
     int t;
     TLLHead *r;
 };
-
-TLLHead * newTLLHead(int t, TLLHead *other) {
-    TLLHead *head = alloc(sizeof *head);
-    head->t = t;
-    if (other != NULL) head->r = other;
-    return head;
-}
+TLLHead * newTLLHead(int t, TLLHead *other);
 
 
-struct Node {
-    char op;
-    union {
-        int n;
-        char v[NString];
-        Symb s;
-        double d;
-    } u;
-    Node *l, *r;
-};
 
-Node * newNode(char op, Node *l, Node *r) {
-    Node *n = alloc(sizeof *n);
-    n->op = op;
-    n->l = l;
-    n->r = r;
+Symb emitexpr(Node *);
+Symb lval(Node *);
+void emitboolop(Node *, int, int);
+Symb * varget(char *v);
+void ppCtype(unsigned long t);
+
+
+
+
+// Node construction
+
+Node * mkidx(Node *a, Node *i) {
+    Node *n = node(OP_ADD, a, i);
+    n = node(OP_DEREF, n, 0);
     return n;
 }
 
 
-struct Stmt {
-    enum {
-        If,
-        While,
-        Seq,
-        Expr,
-        Break,
-        Ret,
-    } t;
-    void *p1, *p2, *p3;
-};
+Node * mkneg(Node *n) {
+    static Node *z;
+    if (!z) {
+        z = node(LIT_INT, 0, 0);
+        z->s.u.n = 0;
+    }
+    return node(OP_SUB, z, n);
+}
 
-Stmt * newstmt(int t, void *p1, void *p2, void *p3) {
-    Stmt *s = alloc(sizeof *s);
-    s->t = t;
-    s->p1 = p1;
-    s->p2 = p2;
-    s->p3 = p3;
-    return s;
+
+Node * mkparam(char *v, unsigned ctyp, Node *pl) {
+    if (ctyp == T_VOID) die("invalid void declaration");
+    Node *n = node(0, 0, pl);
+    varadd(v, 0, ctyp);
+    strcpy(n->s.u.v, v);
+    return n;
+}
+
+
+Node * mkifelse(void *c, Node *t, Node *f) {
+    return node(IfElse, c, node(Else, t, f));
+}
+
+
+Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s) {
+    Node *s1, *s2;
+
+    if (ini)
+        s1 = node(Expr, ini, 0);
+    else
+        s1 = 0;
+    if (inc) {
+        s2 = node(Expr, inc, 0);
+        s2 = node(Seq, s, s2);
+    } else
+        s2 = s;
+    if (!tst) {
+        tst = node(LIT_INT, 0, 0);
+        tst->s.u.n = 1;
+    }
+    s2 = node(While, tst, s2);
+    if (s1)
+        return node(Seq, s1, s2);
+    else
+        return s2;
 }
 
 
 
-// OPEN: put these on a context (almost as fast as globals but faster than putting everything on the stack
-// so top context becomes an indirect through a global and is a struct, i.e. with known offsets - could used scratch
-FILE *of;
-int line, lbl, tmp, nglo;
-char *ini[NGlo];
-struct {
-    char v[NString];
-    unsigned ctyp;
-    int glo;
-} varh[NVar];
-char currentFFN[1000];     // should be long enough for a filename
+// emission
 
-
-void die(char *s) {
-    fprintf(stderr, "\nline <= %d: %s\n", line, s);
-    fprintf(stderr, "in %s\n\n", currentFFN);
-    // OPEN: use setjmp and longjmp with deallocation of linked list of arenas
-    exit(1);
-}
-
-
-void * alloc(size_t s) {
-    // OPEN: do a linked list of arenas - so can unwind more safely in Python
-    void *p = malloc(s);
-    if (!p) die("out of memory");
-    return p;
-}
-
-
-unsigned hash(char *s) {
-    unsigned h = 42;
-    while (*s) h += 11 * h + *s++;
-    return h % NVar;
-}
-
-
-void varclr() {
-    for (unsigned h=0; h<NVar; h++)
-        if (!varh[h].glo) varh[h].v[0] = 0;
-}
-
-
-void varadd(char *v, int glo, unsigned ctyp) {
-    unsigned h0 = hash(v);
-    unsigned h = h0;
-    do {
-        if (varh[h].v[0] == 0) {
-            strcpy(varh[h].v, v);
-            varh[h].glo = glo;
-            varh[h].ctyp = ctyp;
-            return;
-        }
-        if (strcmp(varh[h].v, v) == 0) {
-            fprintf(stderr, "%s is already defined\n", varh[h].v);
-            die("double definition");
-        }
-        h = (h+1) % NVar;
-    } while(h != h0);
-    die("too many variables");
-}
-
-
-Symb * varget(char *v) {
-    static Symb s;
-    unsigned h0 = hash(v);
-    unsigned h = h0;
-    do {
-        if (strcmp(varh[h].v, v) == 0) {
-            if (!varh[h].glo) {
-                s.t = Var;
-                strcpy(s.u.v, v);
-            } else {
-                s.t = Glo;
-                s.u.n = varh[h].glo;
-            }
-            s.ctyp = varh[h].ctyp;
-            return &s;
-        }
-        h = (h+1) % NVar;
-    } while (h != h0 && varh[h].v[0] != 0);
-    return 0;
+void emitsymb(Symb s) {
+    switch (s.t) {
+        case Tmp:
+            putq(TEMP "%d", s.u.n);
+            break;
+        case Var:
+            putq(LOCAL "%s", s.u.v);
+            break;
+        case Glo:
+            putq(GLOBAL "%d", s.u.n);
+            break;
+        case Con:
+            putq("%d", s.u.n);
+            break;
+    }
 }
 
 
@@ -304,28 +339,10 @@ char irtyp(unsigned ctyp) {
 }
 
 
-void emitsymb(Symb s) {
-    switch (s.t) {
-        case Tmp:
-            fprintf(of, TEMP "%d", s.u.n);
-            break;
-        case Var:
-            fprintf(of, LOCAL "%s", s.u.v);
-            break;
-        case Glo:
-            fprintf(of, GLOBAL "%d", s.u.n);
-            break;
-        case Con:
-            fprintf(of, "%d", s.u.n);
-            break;
-    }
-}
-
-
 void l_extsw(Symb *s) {
-    fprintf(of, "\t" TEMP "%d =l extsw ", tmp);
+    putq("\t" TEMP "%d =l extsw ", tmp);
     emitsymb(*s);
-    fprintf(of, "\n");
+    putq("\n");
     s->t = Tmp;
     s->ctyp = T_LNG;
     s->u.n = tmp++;
@@ -333,9 +350,9 @@ void l_extsw(Symb *s) {
 
 
 void d_swtof(Symb *s) {
-    fprintf(of, "\t" TEMP "%d =d swtof ", tmp);
+    putq("\t" TEMP "%d =d swtof ", tmp);
     emitsymb(*s);
-    fprintf(of, "\n");
+    putq("\n");
     s->t = Tmp;
     s->ctyp = T_DBL;
     s->u.n = tmp++;
@@ -343,9 +360,9 @@ void d_swtof(Symb *s) {
 
 
 void d_sltof(Symb *s) {
-    fprintf(of, "\t" TEMP "%d =d sltof ", tmp);
+    putq("\t" TEMP "%d =d sltof ", tmp);
     emitsymb(*s);
-    fprintf(of, "\n");
+    putq("\n");
     s->t = Tmp;
     s->ctyp = T_DBL;
     s->u.n = tmp++;
@@ -402,9 +419,9 @@ Scale:
         r->u.n *= sz;
     else {
         if (irtyp(r->ctyp) != 'l') l_extsw(r);
-        fprintf(of, "\t" TEMP "%d =l mul %d, ", tmp, sz);
+        putq("\t" TEMP "%d =l mul %d, ", tmp, sz);
         emitsymb(*r);
-        fprintf(of, "\n");
+        putq("\n");
         r->u.n = tmp++;
     }
     return l->ctyp;
@@ -412,17 +429,17 @@ Scale:
 
 
 void emitload(Symb d, Symb s) {
-    fprintf(of, "\t");
+    putq("\t");
     emitsymb(d);
-    fprintf(of, " =%c load%c ", irtyp(d.ctyp), irtyp(d.ctyp));
+    putq(" =%c load%c ", irtyp(d.ctyp), irtyp(d.ctyp));
     emitsymb(s);
-    fprintf(of, "\n");
+    putq("\n");
 }
 
 
 void emitcall(Node *n, Symb *sr) {
     Node *a;  unsigned ft;
-    char *f = n->l->u.v;
+    char *f = n->l->s.u.v;
     if (varget(f)) {
         ft = varget(f)->ctyp;
         if (KIND(ft) != T_FUN) die("invalid call");
@@ -430,16 +447,16 @@ void emitcall(Node *n, Symb *sr) {
         ft = FUNC(T_INT);
     sr->ctyp = DREF(ft);
     for (a=n->r; a; a=a->r)
-        a->u.s = emitexpr(a->l);
-    fprintf(of, "\t");
+        a->s = emitexpr(a->l);
+    putq("\t");
     emitsymb(*sr);
-    fprintf(of, " =%c call $%s(", irtyp(sr->ctyp), f);
+    putq(" =%c call $%s(", irtyp(sr->ctyp), f);
     for (a=n->r; a; a=a->r) {
-        fprintf(of, "%c ", irtyp(a->u.s.ctyp));
-        emitsymb(a->u.s);
-        fprintf(of, ", ");
+        putq("%c ", irtyp(a->s.ctyp));
+        emitsymb(a->s);
+        putq(", ");
     }
-    fprintf(of, "...)\n");
+    putq("...)\n");
 }
 
 
@@ -475,15 +492,15 @@ Symb emitexpr(Node *n) {
             l = lbl;
             lbl += 3;
             emitboolop(n, l, l+1);
-            fprintf(of, LABEL "%d\n", l);
-            fprintf(of, "\tjmp " LABEL "%d\n", l+2);
-            fprintf(of, LABEL "%d\n", l+1);
-            fprintf(of, "\tjmp " LABEL "%d\n", l+2);
-            fprintf(of, LABEL "%d\n", l+2);
-            fprintf(of, "\t");
+            putq(LABEL "%d\n", l);
+            putq("\tjmp " LABEL "%d\n", l+2);
+            putq(LABEL "%d\n", l+1);
+            putq("\tjmp " LABEL "%d\n", l+2);
+            putq(LABEL "%d\n", l+2);
+            putq("\t");
             sr.ctyp = T_INT;
             emitsymb(sr);
-            fprintf(of, " =w phi " LABEL "%d 1, " LABEL "%d 0\n", l, l+1);
+            putq(" =w phi " LABEL "%d 1, " LABEL "%d 0\n", l, l+1);
             break;
 
         case NAME:
@@ -494,19 +511,19 @@ Symb emitexpr(Node *n) {
 
         case LIT_DEC:
             sr.t = Con;
-            sr.u.d = n->u.d;
+            sr.u.d = n->s.u.d;
             sr.ctyp = T_DBL;
             break;
 
         case LIT_INT:
             sr.t = Con;
-            sr.u.n = n->u.n;
+            sr.u.n = n->s.u.n;
             sr.ctyp = T_INT;
             break;
 
         case 'S':
             sr.t = Glo;
-            sr.u.n = n->u.n;
+            sr.u.n = n->s.u.n;
             sr.ctyp = IDIR(T_INT);
             break;
 
@@ -527,6 +544,12 @@ Symb emitexpr(Node *n) {
             sr.ctyp = IDIR(sr.ctyp);
             break;
 
+        case ADD_EQ:
+            die("+= NYI");
+
+        case SUB_EQ:
+            die("-= NYI");
+
         case OP_ASSIGN:
             s0 = emitexpr(n->r);
             s1 = lval(n->l);
@@ -538,17 +561,17 @@ Symb emitexpr(Node *n) {
                 if (s1.ctyp != IDIR(T_VOID) || KIND(s0.ctyp) != T_PTR)
                     if (s1.ctyp != s0.ctyp) {
                         ppCtype(s1.ctyp);
-                        fprintf(stderr, "%s = ", s1.u.v);
+                        PP(emit, "%s = ", s1.u.v);
                         ppCtype(s0.ctyp);
-                        fprintf(stderr, "\n");
+                        PP(emit, "\n");
                         die("invalid assignment");
                     }
-            fprintf(of, "\tstore%c ", irtyp(s1.ctyp));
+            putq("\tstore%c ", irtyp(s1.ctyp));
             goto Args;
 
-        case OP_PP:
-        case OP_MM:
-            o = n->op == OP_PP ? OP_ADD : OP_SUB;
+        case OP_INC:
+        case OP_DEC:
+            o = n->op == OP_INC ? OP_ADD : OP_SUB;
             sl = lval(n->l);
             s0.t = Tmp;
             s0.u.n = tmp++;
@@ -570,30 +593,30 @@ Symb emitexpr(Node *n) {
                 sr.ctyp = T_INT;
             } else
                 strcpy(ty, "");
-            fprintf(of, "\t");
+            putq("\t");
             emitsymb(sr);
-            fprintf(of, " =%c", irtyp(sr.ctyp));
-            fprintf(of, " %s%s ", otoa[o], ty);
+            putq(" =%c", irtyp(sr.ctyp));
+            putq(" %s%s ", otoa[o], ty);
         Args:
             emitsymb(s0);
-            fprintf(of, ", ");
+            putq(", ");
             emitsymb(s1);
-            fprintf(of, "\n");
+            putq("\n");
             break;
 
     }
     if (n->op == OP_SUB  &&  KIND(s0.ctyp) == T_PTR  &&  KIND(s1.ctyp) == T_PTR) {
-        fprintf(of, "\t" TEMP "%d =l div ", tmp);
+        putq("\t" TEMP "%d =l div ", tmp);
         emitsymb(sr);
-        fprintf(of, ", %d\n", SIZE(DREF(s0.ctyp)));
+        putq(", %d\n", SIZE(DREF(s0.ctyp)));
         sr.u.n = tmp++;
     }
-    if (n->op == OP_PP  ||  n->op == OP_MM) {
-        fprintf(of, "\tstore%c ", irtyp(sl.ctyp));
+    if (n->op == OP_INC  ||  n->op == OP_DEC) {
+        putq("\tstore%c ", irtyp(sl.ctyp));
         emitsymb(sr);
-        fprintf(of, ", ");
+        putq(", ");
         emitsymb(sl);
-        fprintf(of, "\n");
+        putq("\n");
         sr = s0;
     }
     return sr;
@@ -606,11 +629,11 @@ Symb lval(Node *n) {
         default:
             die("invalid lvalue");
         case NAME:
-            if (!varget(n->u.v)) {
-                fprintf(stderr, "%s is not defined\n", n->u.v);
+            if (!varget(n->s.u.v)) {
+                PP(error, "%s is not defined\n", n->s.u.v);
                 die("undefined variable");
             }
-            sr = *varget(n->u.v);
+            sr = *varget(n->s.u.v);
             break;
         case OP_DEREF:
             sr = emitexpr(n->l);
@@ -626,189 +649,149 @@ void emitboolop(Node *n, int lt, int lf) {
     Symb s;  int l;
     switch (n->op) {
         default:
-            s = emitexpr(n); /* TODO: insert comparison to 0 with proper type */
-            fprintf(of, "\tjnz ");
+            s = emitexpr(n); /* OPEN: insert comparison to 0 with proper type */
+            putq("\tjnz ");
             emitsymb(s);
-            fprintf(of, ", " LABEL "%d, " LABEL "%d\n", lt, lf);
+            putq(", " LABEL "%d, " LABEL "%d\n", lt, lf);
             break;
         case OP_OR:
             l = lbl;
             lbl += 1;
             emitboolop(n->l, lt, l);
-            fprintf(of, LABEL "%d\n", l);
+            putq(LABEL "%d\n", l);
             emitboolop(n->r, lt, lf);
             break;
         case OP_AND:
             l = lbl;
             lbl += 1;
             emitboolop(n->l, l, lf);
-            fprintf(of, LABEL "%d\n", l);
+            putq(LABEL "%d\n", l);
             emitboolop(n->r, lt, lf);
             break;
     }
 }
 
 
-int emitstmt(Stmt *s, int b) {
+int emitstmt(Node *s, int b) {
     int l, r;  Symb x;
+    PP(emit, "emitstmt");
 
     if (!s) return 0;
 
-    switch (s->t) {
+    switch (s->op) {
+        default:
+            die("invalid statement %d", s->op);
         case Ret:
-            x = emitexpr(s->p1);
-            fprintf(of, "\tret ");
+            PP(emit, "Ret");
+            x = emitexpr(s->l);
+            putq("\tret ");
             emitsymb(x);
-            fprintf(of, "\n");
+            putq("\n");
             return 1;
         case Break:
             if (b < 0) die("break not in loop");
-            fprintf(of, "\tjmp " LABEL "%d\n", b);
+            putq("\tjmp " LABEL "%d\n", b);
             return 1;
         case Expr:
-            emitexpr(s->p1);
+            emitexpr(s->l);
             return 0;
         case Seq:
-            return emitstmt(s->p1, b) || emitstmt(s->p2, b);
+            return emitstmt(s->l, b) || emitstmt(s->r, b);
         case If:
             l = lbl;
+            lbl += 2;
+            emitboolop(s->l, l, l+1);
+            putq(LABEL "%d\n", l);
+            emitstmt(s->r, b);
+            putq(LABEL "%d\n", l+1);
+            return 0;
+        case IfElse:
+            l = lbl;
             lbl += 3;
-            emitboolop(s->p1, l, l+1);
-            fprintf(of, LABEL "%d\n", l);
-            if (!(r=emitstmt(s->p2, b)))
-                if (s->p3)
-                    fprintf(of, "\tjmp " LABEL "%d\n", l+2);
-            fprintf(of, LABEL "%d\n", l+1);
-            if (s->p3)
-                if (!(r &= emitstmt(s->p3, b)))
-                    fprintf(of, LABEL "%d\n", l+2);
-            return s->p3 && r;
+            emitboolop(s->l, l, l+1);
+            putq(LABEL "%d\n", l);
+            Node * e = s->r;
+            if (!(r=emitstmt(e->l, b)))
+                putq("\tjmp " LABEL "%d\n", l+2);
+            putq(LABEL "%d\n", l+1);
+            if (!(r &= emitstmt(e->r, b)))
+                putq(LABEL "%d\n", l+2);
+            return e->r && r;
         case While:
             l = lbl;
             lbl += 3;
-            fprintf(of, LABEL "%d\n", l);
-            emitboolop(s->p1, l+1, l+2);
-            fprintf(of, LABEL "%d\n", l+1);
-            if (!emitstmt(s->p2, l+2))
-                fprintf(of, "\tjmp " LABEL "%d\n", l);
-            fprintf(of, LABEL "%d\n", l+2);
+            putq(LABEL "%d\n", l);
+            emitboolop(s->l, l+1, l+2);
+            putq(LABEL "%d\n", l+1);
+            if (!emitstmt(s->r, l+2))
+                putq("\tjmp " LABEL "%d\n", l);
+            putq(LABEL "%d\n", l+2);
             return 0;
     }
-}
-
-
-Node * mkidx(Node *a, Node *i) {
-    Node *n = newNode(OP_ADD, a, i);
-    n = newNode(OP_DEREF, n, 0);
-    return n;
-}
-
-
-Node * mkneg(Node *n) {
-    static Node *z;
-    if (!z) {
-        z = newNode(LIT_INT, 0, 0);
-        z->u.n = 0;
-    }
-    return newNode(OP_SUB, z, n);
-}
-
-
-Node * mkparam(char *v, unsigned ctyp, Node *pl) {
-    if (ctyp == T_VOID) die("invalid void declaration");
-    Node *n = newNode(0, 0, pl);
-    varadd(v, 0, ctyp);
-    strcpy(n->u.v, v);
-    return n;
-}
-
-
-Stmt * mkfor(Node *ini, Node *tst, Node *inc, Stmt *s) {
-    Stmt *s1, *s2;
-
-    if (ini)
-        s1 = newstmt(Expr, ini, 0, 0);
-    else
-        s1 = 0;
-    if (inc) {
-        s2 = newstmt(Expr, inc, 0, 0);
-        s2 = newstmt(Seq, s, s2, 0);
-    } else
-        s2 = s;
-    if (!tst) {
-        tst = newNode(LIT_INT, 0, 0);
-        tst->u.n = 1;
-    }
-    s2 = newstmt(While, tst, s2, 0);
-    if (s1)
-        return newstmt(Seq, s1, s2, 0);
-    else
-        return s2;
 }
 
 
 void initFunc() {
-    if (LOG & L_EMIT) fprintf(stderr, "initFunc\n");
+    PP(emit, "initFunc\n");
     varclr(); tmp = 0;
 }
 
 
 void startFunc(int t, Node *fnname, Node *params) {
     Symb *s;  Node *n;  int i, m;
+    PP(emit, "startFunc");
 
-    if (LOG & L_EMIT) fprintf(stderr, "startFunc\n");
-
-    varadd(fnname->u.v, 1, FUNC(T_INT));
-    fprintf(of, "export function w $%s(", fnname->u.v);
+    varadd(fnname->s.u.v, 1, FUNC(T_INT));
+    putq("export function w $%s(", fnname->s.u.v);
     n = params;
     if (n)
         for (;;) {
-            s = varget(n->u.v);
-            fprintf(of, "%c ", irtyp(s->ctyp));
-            fprintf(of, TEMP "%d", tmp++);
+            s = varget(n->s.u.v);
+            putq("%c ", irtyp(s->ctyp));
+            putq(TEMP "%d", tmp++);
             n = n->r;
             if (n)
-                fprintf(of, ", ");
+                putq(", ");
             else
                 break;
         }
-    fprintf(of, ") {\n");
-    fprintf(of, LABEL "%d\n", lbl++);
+    putq(") {\n");
+    putq(LABEL "%d\n", lbl++);
     for (i=0, n=params; n; i++, n=n->r) {
-        s = varget(n->u.v);
+        s = varget(n->s.u.v);
         m = SIZE(s->ctyp);
-        fprintf(of, "\t" LOCAL "%s =l alloc%d %d\n", n->u.v, m, m);
-        fprintf(of, "\tstore%c " TEMP "%d", irtyp(s->ctyp), i);
-        fprintf(of, ", " LOCAL "%s\n", n->u.v);
+        putq("\t" LOCAL "%s =l alloc%d %d\n", n->s.u.v, m, m);
+        putq("\tstore%c " TEMP "%d", irtyp(s->ctyp), i);
+        putq(", " LOCAL "%s\n", n->s.u.v);
     }
 }
 
 
-void finishFunc(Stmt *s) {
-    if (LOG & L_EMIT) fprintf(stderr, "finishFunc\n\n");
-    if (!emitstmt(s, -1)) fprintf(of, "\tret 0\n");
-    fprintf(of, "}\n\n");
+void finishFunc(Node *s) {
+    PP(emit, "finishFunc");
+    if (!emitstmt(s, -1)) putq("\tret 0\n");
+    putq("}\n\n");
 }
 
 
 void emitLocalDecl(int t, Node *varname) {
-    if (LOG & L_EMIT) fprintf(stderr, "emitLocalDecl\n");
+    PP(emit, "emitLocalDecl\n");
     // OPEN: allow multiple names for each type
     int s;  char *v;
     if (t == T_VOID) die("invalid void declaration");
-    v = varname->u.v;
+    v = varname->s.u.v;
     s = SIZE(t);
     varadd(v, 0, t);
-    fprintf(of, "\t" LOCAL "%s =l alloc%d %d\n", v, s, s);
+    putq("\t" LOCAL "%s =l alloc%d %d\n", v, s, s);
 }
 
 
-void collectGlobal(int t, Node *globalname) {
+void declareGlobal(int t, Node *globalname) {
     if (t == T_VOID) die("invalid void declaration");
     if (nglo == NGlo) die("too many string literals");
-    ini[nglo] = alloc(sizeof "{ x 0 }");
-    sprintf(ini[nglo], "{ %c 0 }", irtyp(t));
-    varadd(globalname->u.v, nglo++, t);
+    globals[nglo] = alloc(sizeof "{ x 0 }");
+    sprintf(globals[nglo], "{ %c 0 }", irtyp(t));
+    varadd(globalname->s.u.v, nglo++, t);
 }
 
 
@@ -819,7 +802,6 @@ void collectGlobal(int t, Node *globalname) {
 %union {
     Node *n;
     TLLHead *t;
-    Stmt *s;
     unsigned u;
 }
 
@@ -838,6 +820,11 @@ void collectGlobal(int t, Node *globalname) {
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 
 %start translation_unit
+
+
+%type <n> expression pointer unary_operator assignment_expression unary_expression assignment_operator cast_expression
+%type <n> type_name compound_statement declarator declaration_list
+
 %%
 
 primary_expression
@@ -867,20 +854,20 @@ argument_expression_list
 
 unary_expression
 : postfix_expression
-| INC_OP unary_expression
-| DEC_OP unary_expression
-| unary_operator cast_expression
-| SIZEOF unary_expression
-| SIZEOF '(' type_name ')'
+| INC_OP unary_expression                               { $$ = node(OP_INC, $2, 0); }
+| DEC_OP unary_expression                               { $$ = node(OP_DEC, $2, 0); }
+| unary_operator cast_expression                        { $$ = bindl($1, $2, __LINE__); }
+| SIZEOF unary_expression                               { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($2); }
+| SIZEOF '(' type_name ')'                              { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($3); }
 ;
 
 unary_operator
-: '&'
-| '*'
+: '&'                                                   { $$ = node(OP_ADDR, 0, 0); }
+| '*'                                                   { $$ = node(OP_DEREF, 0, 0); }
 | '+'
 | '-'
-| '~'
-| '!'
+| '~'                                                   { $$ = node(OP_BINV, 0, 0); }
+| '!'                                                   { $$ = node(OP_NOT, 0, 0); }
 ;
 
 cast_expression
@@ -953,16 +940,16 @@ conditional_expression
 
 assignment_expression
 : conditional_expression
-| unary_expression assignment_operator assignment_expression
+| unary_expression assignment_operator assignment_expression    { $$ = bindlr($2, $1, $3, __LINE__); }
 ;
 
 assignment_operator
-: '='
+: '='                                                   { $$ = node(OP_ASSIGN, 0, 0); }
 | MUL_ASSIGN
 | DIV_ASSIGN
 | MOD_ASSIGN
-| ADD_ASSIGN
-| SUB_ASSIGN
+| ADD_ASSIGN                                            { $$ = node(ADD_EQ, 0, 0); }
+| SUB_ASSIGN                                            { $$ = node(SUB_EQ, 0, 0); }
 | LEFT_ASSIGN
 | RIGHT_ASSIGN
 | AND_ASSIGN
@@ -1014,13 +1001,13 @@ storage_class_specifier
 ;
 
 type_specifier
-: VOID
-| CHAR
+: VOID                                                      { $<u>$ = T_VOID; }
+| CHAR                                                      { $<u>$ = T_CHR; }
 | SHORT
-| INT
+| INT                                                       { $<u>$ = T_INT; }
 | LONG
 | FLOAT
-| DOUBLE
+| DOUBLE                                                    { $<u>$ = T_DBL; }
 | SIGNED
 | UNSIGNED
 | BOOL
@@ -1119,10 +1106,11 @@ direct_declarator
 | direct_declarator '(' ')'
 ;
 
-pointer
+pointer                                                 
 : '*'
 | '*' type_qualifier_list
-| '*' pointer
+| '*' pointer                                           { //$<n>$ = IDIR($2);
+    }
 | '*' type_qualifier_list pointer
 ;
 
@@ -1250,7 +1238,9 @@ iteration_statement
 : WHILE '(' expression ')' statement
 | DO statement WHILE '(' expression ')' ';'
 | FOR '(' expression_statement expression_statement ')' statement
-| FOR '(' expression_statement expression_statement expression ')' statement
+| FOR '(' expression_statement
+    expression_statement expression ')'
+    statement
 | FOR '(' declaration expression_statement ')' statement
 | FOR '(' declaration expression_statement expression ')' statement
 ;
@@ -1260,7 +1250,7 @@ jump_statement
 | CONTINUE ';'
 | BREAK ';'
 | RETURN ';'
-| RETURN expression ';'
+| RETURN expression ';'                                     { $<n>$ = node(Ret, $2, 0); }
 ;
 
 translation_unit
@@ -1274,8 +1264,8 @@ external_declaration
 ;
 
 function_definition
-: declaration_specifiers declarator declaration_list compound_statement
-| declaration_specifiers declarator compound_statement
+: declaration_specifiers declarator declaration_list compound_statement     { startFunc(0, $2, $3); finishFunc($4); }
+| declaration_specifiers declarator compound_statement                      { startFunc(0, $2, 0); finishFunc($3); }
 ;
 
 declaration_list
@@ -1285,7 +1275,9 @@ declaration_list
 
 
 %%
+
 #include <stdio.h>
+
 
 
 int yylex() {
@@ -1319,7 +1311,7 @@ int yylex() {
             fscanf(stdin, "%d", &line);
             scanf("%%*[^\"]");
             scanf("\"");
-            scanf("%[^\"]", currentFFN);
+            scanf("%[^\"]", srcFfn);
             // https://stackoverflow.com/questions/24483075/input-using-sscanf-with-regular-expression instead of regex "(?<=\")(.*)(?=\")" instead
             while ((c = getchar()) != '\n') {;}  // don't include a line with # on the line count
         }
@@ -1336,7 +1328,7 @@ int yylex() {
     } while (isspace(c));
 
     if (c == EOF) {
-        if (LOG & L_LEX) fprintf(stderr, "\nEOF\n");
+        PP(lex, "\nEOF\n");
         return 0;
     }
 
@@ -1359,16 +1351,16 @@ int yylex() {
                 c = getchar();
             } while (isdigit(c));
             ungetc(c, stdin);
-            yylval.n = newNode(LIT_DEC, 0, 0);
-            yylval.n->u.d = d;
-            if (LOG & L_EMIT) fprintf(stderr, "%f ", d);
+            yylval.n = node(LIT_DEC, 0, 0);
+            yylval.n->s.u.d = d;
+            PP(lex, "%f ", d);
             return CONSTANT;
         }
         else {
             ungetc(c, stdin);
-            yylval.n = newNode(LIT_INT, 0, 0);
-            yylval.n->u.n = n;
-            if (LOG & L_EMIT) fprintf(stderr, "%d ", n);
+            yylval.n = node(LIT_INT, 0, 0);
+            yylval.n->s.u.n = n;
+            PP(lex, "%d ", n);
             return CONSTANT;
         }
     }
@@ -1385,9 +1377,9 @@ int yylex() {
         for (i=0; kwds[i].s; i++)
             if (strcmp(v, kwds[i].s) == 0)
                 return kwds[i].t;
-        yylval.n = newNode(NAME, 0, 0);
-        strcpy(yylval.n->u.v, v);
-        if (LOG & L_EMIT) fprintf(stderr, "%s ", p);
+        yylval.n = node(NAME, 0, 0);
+        strcpy(yylval.n->s.u.v, v);
+        PP(lex, "%s ", p);
         return IDENTIFIER;
     }
 
@@ -1432,10 +1424,10 @@ int yylex() {
         }
         strcpy(&p[i], "\", b 0 }");
         if (nglo == NGlo) die("too many globals");
-        ini[nglo] = p;
-        yylval.n = newNode('S', 0, 0);
-        yylval.n->u.n = nglo++;
-        if (LOG & L_EMIT) fprintf(stderr, "%s ", &p[i]);
+        globals[nglo] = p;
+        yylval.n = node('S', 0, 0);
+        yylval.n->s.u.n = nglo++;
+        PP(lex, "%s ", &p[i]);
         return STRING_LITERAL;
     }
 
@@ -1450,6 +1442,8 @@ int yylex() {
         case DI('-','-'): return DEC_OP;
         case DI('&','&'): return AND_OP;
         case DI('|','|'): return OR_OP;
+        case DI('+','='): return ADD_EQ;
+        case DI('-','='): return SUB_EQ;
         case DI('.','.'): {
             c3 = getchar();
             if (c3 == '.') {
@@ -1460,10 +1454,28 @@ int yylex() {
     }
 #undef DI
     ungetc(c2, stdin);
-    if (LOG & L_EMIT) fprintf(stderr, "%c ", c);
+    PP(lex, "%c ", c);
     return c;
 }
 
+
+
+int main() {
+    gLevel = lex | parse | emit;
+    of = stdout;
+    nglo = 1;
+    if (yyparse() != 0) die("parse error");
+    for (int i=1; i<nglo; i++)
+        putq("data " GLOBAL "%d = %s\n", i, globals[i]);
+    return 0;
+}
+
+
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// YACC HELPERS
+// ---------------------------------------------------------------------------------------------------------------------
 
 void yyerror(char const *err) {
 //    fflush(stdout);
@@ -1472,13 +1484,165 @@ void yyerror(char const *err) {
 }
 
 
-int main() {
-    int i;
-    of = stdout;
-    nglo = 1;
-    if (LOG) fprintf(stderr, "Parsing...\n");
-    if (yyparse() != 0) die("parse error");
-    for (i=1; i<nglo; i++)
-        fprintf(of, "data " GLOBAL "%d = %s\n", i, ini[i]);
+
+// ---------------------------------------------------------------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------------------------------------------------------------
+
+Node * node(int op, Node *l, Node *r) {
+    Node *n = alloc(sizeof *n);
+    n->op = op;
+    n->l = l;
+    n->r = r;
+    return n;
+}
+
+Node * bindl(Node *n, Node *l, int lineno) {
+    if (n->l != 0) {
+        PP(parse, "bindl from @%d", lineno);
+        die("node.l already bound");
+    }
+    n->l = l;
+    return n;
+}
+
+Node * bindr(Node *n, Node *r, int lineno) {
+    if (n->r != 0) {
+        PP(parse, "bindr from @%d", lineno);
+        die("2nd arg of fn already bound");
+    }
+    n->r = r;
+    return n;
+}
+
+Node * bindlr(Node *n, Node *l, Node *r, int lineno) {
+    if (n->l != 0) {PP(parse, "bindlr from @%d", lineno); die("n.l already bound");}
+    if (n->r != 0) {PP(parse, "bindlr from @%d", lineno); die("n.r already bound");}
+    n->l = l;
+    n->r = r;
+    return n;
+}
+
+TLLHead * newTLLHead(int t, TLLHead *other) {
+    TLLHead *head = alloc(sizeof *head);
+    head->t = t;
+    if (other != NULL) head->r = other;
+    return head;
+}
+
+unsigned hash(char *s) {
+    unsigned h = 42;
+    while (*s) h += 11 * h + *s++;
+    return h % NVar;
+}
+
+void * alloc(size_t s) {
+    // OPEN: do a linked list of arenas - so can unwind more safely in Python
+    void *p = malloc(s);
+    if (!p) die("out of memory");
+    return p;
+}
+
+void die(char *msg, ...) {
+    va_list args;
+    fprintf(stderr, "\nline <= %d: ", line);
+    va_start(args, msg);
+    vfprintf(stderr, msg, args);
+    va_end(args);
+    fprintf(stderr, "\nin %s\n\n", srcFfn);
+    // OPEN: use setjmp and longjmp with deallocation of linked list of arenas
+    exit(1);
+}
+
+void varclr() {
+    for (unsigned h=0; h<NVar; h++)
+        if (!varh[h].glo) varh[h].v[0] = 0;
+}
+
+void varadd(char *v, int glo, unsigned ctyp) {
+    unsigned h0 = hash(v);
+    unsigned h = h0;
+    do {
+        if (varh[h].v[0] == 0) {
+            strcpy(varh[h].v, v);
+            varh[h].glo = glo;
+            varh[h].ctyp = ctyp;
+            return;
+        }
+        if (strcmp(varh[h].v, v) == 0) {
+            PP(error, "%s is already defined\n", varh[h].v);
+            die("double definition");
+        }
+        h = (h+1) % NVar;
+    } while(h != h0);
+    die("too many variables");
+}
+
+Symb * varget(char *v) {
+    static Symb s;
+    unsigned h0 = hash(v);
+    unsigned h = h0;
+    do {
+        if (strcmp(varh[h].v, v) == 0) {
+            if (!varh[h].glo) {
+                s.t = Var;
+                strcpy(s.u.v, v);
+            } else {
+                s.t = Glo;
+                s.u.n = varh[h].glo;
+            }
+            s.ctyp = varh[h].ctyp;
+            return &s;
+        }
+        h = (h+1) % NVar;
+    } while (h != h0 && varh[h].v[0] != 0);
     return 0;
+}
+
+void ppCtype(unsigned long t) {
+    int n = 0, i;
+    while (t > 7) {
+        n++;
+        t = DREF(t);
+    }
+    switch (t) {
+        case T_VOID:
+            fprintf(stderr, "void ");
+            break;
+        case T_INT:
+            fprintf(stderr, "int ");
+            break;
+        case T_LNG:
+            fprintf(stderr, "long ");
+            break;
+        case T_DBL:
+            fprintf(stderr, "double ");
+            break;
+        case T_FUN:
+            fprintf(stderr, "() ");
+            break;
+        default:
+            fprintf(stderr, "%lu", t);
+    }
+    for (i=0; i<n; i++) {
+        fprintf(stderr, "*");
+    }
+    return;
+}
+
+void PP(int level, char *msg, ...) {
+    if (level & gLevel) {
+        va_list args;
+        va_start(args, msg);
+        vfprintf(stderr, msg, args);
+        fprintf(stderr, "\n");
+        va_end(args);
+    }
+}
+
+void putq(char *src, ...) {
+    va_list args;
+    va_start(args, src);
+    vfprintf(of, src, args);
+    va_end(args);
 }

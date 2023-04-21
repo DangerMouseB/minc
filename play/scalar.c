@@ -1,8 +1,7 @@
 
 
-
-scalarProduct(int *A, int *B, int strideA, int strideB, int n) {
-    int i, oA, oB, sum;
+double *scalarProduct(double *A, double *B, int strideA, int strideB, int n) {
+    int i, oA, oB;  double sum;
     oA = 0;
     oB = 0;
     sum = 0;
