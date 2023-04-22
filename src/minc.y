@@ -304,7 +304,6 @@ Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s) {
 }
 
 
-
 // emission
 
 void emitsymb(Symb s) {

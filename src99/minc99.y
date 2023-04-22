@@ -104,7 +104,9 @@ typedef struct VarEntry {
 
 int gLevel;
 FILE *of;
-int line, lbl, tmp, nglo;
+int line, nglo;
+int lbl = 1;            // seed for labels
+int tmp = 1;            // seed for temporary variables in a function
 char *globals[NGlo];
 VarEntry varh[NVar];
 char srcFfn[1000];     // should be long enough for a filename
@@ -124,33 +126,13 @@ void putq(char *src, ...);
 
 // C and QBE IR
 
-
-enum {
-    T_VOID,
-    T_CHR,
-    T_INT,
-    T_LNG,
-    T_DBL,
-    T_PTR,
-    T_FUN,
-};
-
-#define IDIR(x) (((x) << 3) + T_PTR)
-#define FUNC(x) (((x) << 3) + T_FUN)
-#define DREF(x) ((x) >> 3)
-#define KIND(x) ((x) & 7)
-#define SIZE(x) (                                   \
-    x == T_VOID ? (die("void has no size"), 0) : (  \
-	x == T_INT ? 4 : (                              \
-	8                                               \
-)))
-
 #define _lvns 0
 #define _ac _lvns+30
 #define _lvse _ac+10
 #define _nvse _lvse+10
 #define _nvns _nvse+10
-#define _other _nvns+20
+#define _o _nvns+20
+#define _pt 255
 
 enum op {
 
@@ -222,11 +204,51 @@ enum op {
     Break       = _nvns+11,
     Ret         = _nvns+12,
     Seq         = _nvns+13,
+    Do          = _nvns+14,
 
 
     // other
-    Ptr         =  _other+1,
+    Type        = _o+1,
+    T_TYPEDEF   = _o+2,
+    T_EXTERN    = _o+3,
+    T_STATIC    = _o+4,
+    T_AUTO      = _o+5,
+    T_REGISTER  = _o+6,
+    T_STRUCT    = _o+7,
+    T_UNION     = _o+8,
+    
+    T_CONST     = _o+9,
+    T_RESTRICT  = _o+10,
+    T_VOLATILE  = _o+11,
+    T_INLINE    = _o+12,
+
+    T_VOID      = _o+13,
+    T_CHAR      = _o+14,
+    T_SHORT     = _o+15,
+    T_INT       = _o+16,
+    T_LONG      = _o+17,
+    T_FLOAT     = _o+18,
+    T_DOUBLE    = _o+19,
+    T_SIGNED    = _o+20,
+    T_UNSIGNED  = _o+21,
+    T_BOOL      = _o+22,
+    T_COMPLEX   = _o+23,
+    T_IMAGINARY = _o+24,
+
+    T_PTR       = _o+25,
+    T_FUN       = _o+26,
+
 };
+
+#define IDIR(x) (((x) << 8) + T_PTR)
+#define FUNC(x) (((x) << 8) + T_FUN)
+#define DREF(x) ((x) >> 8)
+#define KIND(x) ((x) & 255)
+#define SIZE(x) (                                   \
+    x == T_VOID ? (die("void has no size"), 0) : (  \
+	x == T_INT ? 4 : (                              \
+	8                                               \
+)))
 
 
 
@@ -283,6 +305,10 @@ Symb * varget(char *v);
 void ppCtype(unsigned long t);
 
 
+// parse tree construction
+enum {
+    pt_direct_declarator = _pt+1,
+};
 
 
 // Node construction
@@ -304,14 +330,18 @@ Node * mkneg(Node *n) {
 }
 
 
-Node * mkparam(char *v, unsigned ctyp, Node *pl) {
+Node * mkparam(char *v, unsigned ctyp, Node *others) {
     if (ctyp == T_VOID) die("invalid void declaration");
-    Node *n = node(0, 0, pl);
+    Node *n = node(0, 0, others);
     varadd(v, 0, ctyp);
     strcpy(n->s.u.v, v);
     return n;
 }
 
+Node * c99_mkparam(Node *ds, Node *d) {
+    // declaration_specifiers declarator
+    return mkparam(d->s.u.v, ds->s.ctyp, 0);
+}
 
 Node * mkifelse(void *c, Node *t, Node *f) {
     return node(IfElse, c, node(Else, t, f));
@@ -349,6 +379,13 @@ Node * mkopassign(Node *op, Node *l, Node *r) {
 }
 
 
+Node * mktype(int t) {
+    Node * n = node(Type, 0, 0);
+    n->s.ctyp = t;
+    return n;
+}
+
+
 
 // emission
 
@@ -374,12 +411,12 @@ char irtyp(unsigned ctyp) {
     switch (KIND(ctyp)) {
         case T_VOID: die("void has no size");
         case T_INT: return 'w';
-        case T_LNG: return 'l';
-        case T_DBL: return 'd';
+        case T_LONG: return 'l';
+        case T_DOUBLE: return 'd';
         case T_PTR: return 'l';
         case T_FUN: return 'l';
     }
-    die("unhandled type");
+    die("unhandled type %d @ %d", KIND(ctyp), __LINE__);
     return 'l';
 }
 
@@ -389,7 +426,7 @@ void l_extsw(Symb *s) {
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
-    s->ctyp = T_LNG;
+    s->ctyp = T_LONG;
     s->u.n = tmp++;
 }
 
@@ -399,7 +436,7 @@ void d_swtof(Symb *s) {
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
-    s->ctyp = T_DBL;
+    s->ctyp = T_DOUBLE;
     s->u.n = tmp++;
 }
 
@@ -409,7 +446,7 @@ void d_sltof(Symb *s) {
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
-    s->ctyp = T_DBL;
+    s->ctyp = T_DOUBLE;
     s->u.n = tmp++;
 }
 
@@ -421,21 +458,21 @@ unsigned prom(int op, Symb *l, Symb *r) {
     if (l->ctyp == r->ctyp && KIND(l->ctyp) != T_PTR)
         return l->ctyp;
 
-    if (l->ctyp == T_LNG && r->ctyp == T_INT) {
+    if (l->ctyp == T_LONG && r->ctyp == T_INT) {
         l_extsw(r);
-        return T_LNG;
+        return T_LONG;
     }
-    if (l->ctyp == T_INT && r->ctyp == T_LNG) {
+    if (l->ctyp == T_INT && r->ctyp == T_LONG) {
         l_extsw(l);
-        return T_LNG;
+        return T_LONG;
     }
-    if (l->ctyp == T_DBL && r->ctyp == T_INT) {
+    if (l->ctyp == T_DOUBLE && r->ctyp == T_INT) {
         d_swtof(r);
-        return T_DBL;
+        return T_DOUBLE;
     }
-    if (l->ctyp == T_DBL && r->ctyp == T_LNG) {
+    if (l->ctyp == T_DOUBLE && r->ctyp == T_LONG) {
         d_sltof(r);
-        return T_DBL;
+        return T_DOUBLE;
     }
 
     if (op == OP_ADD) {
@@ -454,7 +491,7 @@ unsigned prom(int op, Symb *l, Symb *r) {
         if (KIND(l->ctyp) != T_PTR) die("pointer substracted from integer");
         if (KIND(r->ctyp) != T_PTR) goto Scale;
         if (l->ctyp != r->ctyp) die("non-homogeneous pointers in substraction");
-        return T_LNG;
+        return T_LONG;
     }
 
 Scale:
@@ -557,7 +594,7 @@ Symb emitexpr(Node *n) {
         case LIT_DEC:
             sr.t = Con;
             sr.u.d = n->s.u.d;
-            sr.ctyp = T_DBL;
+            sr.ctyp = T_DOUBLE;
             break;
 
         case LIT_INT:
@@ -593,9 +630,9 @@ Symb emitexpr(Node *n) {
             s0 = emitexpr(n->r);
             s1 = lval(n->l);
             sr = s0;
-            if (s1.ctyp == T_LNG && s0.ctyp == T_INT) l_extsw(&s0);
-            if (s1.ctyp == T_DBL && s0.ctyp == T_INT) d_swtof(&s0);
-            if (s1.ctyp == T_DBL && s0.ctyp == T_LNG) d_sltof(&s0);
+            if (s1.ctyp == T_LONG && s0.ctyp == T_INT) l_extsw(&s0);
+            if (s1.ctyp == T_DOUBLE && s0.ctyp == T_INT) d_swtof(&s0);
+            if (s1.ctyp == T_DOUBLE && s0.ctyp == T_LONG) d_sltof(&s0);
             if (s0.ctyp != IDIR(T_VOID) || KIND(s1.ctyp) != T_PTR)
                 if (s1.ctyp != IDIR(T_VOID) || KIND(s0.ctyp) != T_PTR)
                     if (s1.ctyp != s0.ctyp) {
@@ -770,18 +807,12 @@ int emitstmt(Node *s, int b) {
 }
 
 
-void initFunc() {
-    PP(emit, "initFunc\n");
-    varclr(); tmp = 0;
-}
-
-
-void startFunc(int t, Node *fnname, Node *params) {
+void startFunc(unsigned long t, Node *fnname, Node *params) {
     Symb *s;  Node *n;  int i, m;
     PP(emit, "startFunc");
 
-    varadd(fnname->s.u.v, 1, FUNC(T_INT));
-    putq("export function w $%s(", fnname->s.u.v);
+    varadd(fnname->s.u.v, 1, FUNC(t));
+    putq("export function %c $%s(", irtyp(t), fnname->s.u.v);
     n = params;
     if (n)
         for (;;) {
@@ -810,6 +841,19 @@ void finishFunc(Node *s) {
     PP(emit, "finishFunc");
     if (!emitstmt(s, -1)) putq("\tret 0\n");
     putq("}\n\n");
+    varclr();
+    tmp = 1;
+}
+
+
+void c99_emitfunc(Node *ds, Node *d, Node *dl, Node* cs) {
+    // declaration_specifiers declarator declaration_list compound_statement
+    if ((ds->s.ctyp != T_INT) && (ds->s.ctyp != T_DOUBLE)) die("ds->s.ctyp != T_INT @ %d", __LINE__);
+    if (d->op != pt_direct_declarator) die("d->op != pt_direct_declarator got %d @ %d", d->op, __LINE__);
+    if (d->l->op != NAME) die("d->l->op != NAME got %d @ %d", d->op, __LINE__);
+    startFunc(ds->s.ctyp, d->l, d->r);
+    finishFunc(cs);
+    return;
 }
 
 
@@ -868,8 +912,9 @@ void declareGlobal(int t, Node *globalname) {
 %type <n> equality_expression and_expression exclusive_or_expression inclusive_or_expression logical_and_expression
 %type <n> logical_or_expression conditional_expression enumerator type_qualifier constant_expression designator
 %type <n> labeled_statement statement expression_statement selection_statement iteration_statement jump_statement
-%type <n> translation_unit
-%type <n> external_declaration
+%type <n> storage_class_specifier function_specifier struct_or_union parameter_list direct_declarator translation_unit
+%type <n> external_declaration type_specifier parameter_declaration parameter_type_list
+
 
 
 
@@ -884,20 +929,20 @@ primary_expression
 
 postfix_expression
 : primary_expression
-| postfix_expression '[' expression ']'                 { die("NYI line: %d", $%); }
-| postfix_expression '(' ')'                            { die("NYI line: %d", $%); }
-| postfix_expression '(' argument_expression_list ')'   { die("NYI line: %d", $%); }
-| postfix_expression '.' IDENTIFIER                     { die("NYI line: %d", $%); }
-| postfix_expression PTR_OP IDENTIFIER                  { die("NYI line: %d", $%); }
+| postfix_expression '[' expression ']'                 { die("NYI @ %d", $%); }
+| postfix_expression '(' ')'                            { die("NYI @ %d", $%); }
+| postfix_expression '(' argument_expression_list ')'   { die("NYI @ %d", $%); }
+| postfix_expression '.' IDENTIFIER                     { die("NYI @ %d", $%); }
+| postfix_expression PTR_OP IDENTIFIER                  { die("NYI @ %d", $%); }
 | postfix_expression INC_OP                             { $$ = node(OP_INC, $1, 0); }
 | postfix_expression DEC_OP                             { $$ = node(OP_DEC, $1, 0); }
-| '(' type_name ')' '{' initializer_list '}'            { die("NYI line: %d", $%); }
-| '(' type_name ')' '{' initializer_list ',' '}'        { die("NYI line: %d", $%); }
+| '(' type_name ')' '{' initializer_list '}'            { die("NYI @ %d", $%); }
+| '(' type_name ')' '{' initializer_list ',' '}'        { die("NYI @ %d", $%); }
 ;
 
 argument_expression_list
 : assignment_expression
-| argument_expression_list ',' assignment_expression    { die("NYI line: %d", $%); }
+| argument_expression_list ',' assignment_expression    { die("NYI @ %d", $%); }
 ;
 
 unary_expression
@@ -912,15 +957,15 @@ unary_expression
 unary_operator
 : '&'                                                   { $$ = node(OP_ADDR, 0, 0); }
 | '*'                                                   { $$ = node(OP_DEREF, 0, 0); }
-| '+'                                                   { die("NYI line: %d", $%); }
-| '-'                                                   { die("NYI line: %d", $%); }
+| '+'                                                   { die("NYI @ %d", $%); }
+| '-'                                                   { die("NYI @ %d", $%); }
 | '~'                                                   { $$ = node(OP_BINV, 0, 0); }
 | '!'                                                   { $$ = node(OP_NOT, 0, 0); }
 ;
 
 cast_expression
 : unary_expression
-| '(' type_name ')' cast_expression                     { die("NYI line: %d", $%); }
+| '(' type_name ')' cast_expression                     { die("NYI @ %d", $%); }
 ;
 
 multiplicative_expression
@@ -1008,7 +1053,7 @@ assignment_operator
 
 expression
 : assignment_expression
-| expression ',' assignment_expression                  { die("NYI line: %d", $%); }
+| expression ',' assignment_expression                  { die("NYI @ %d", $%); }
 ;
 
 constant_expression
@@ -1017,105 +1062,105 @@ constant_expression
 
 declaration
 : declaration_specifiers ';'                            { $$ = $1; }
-| declaration_specifiers init_declarator_list ';'       { die("NYI line: %d", $%); }
+| declaration_specifiers init_declarator_list ';'       { die("NYI @ %d", $%); }
 ;
 
 declaration_specifiers
 : storage_class_specifier
-| storage_class_specifier declaration_specifiers        { die("NYI line: %d", $%); }
+| storage_class_specifier declaration_specifiers        { die("NYI @ %d", $%); }
 | type_specifier
-| type_specifier declaration_specifiers                 { die("NYI line: %d", $%); }
+| type_specifier declaration_specifiers                 { die("NYI @ %d", $%); }
 | type_qualifier
-| type_qualifier declaration_specifiers                 { die("NYI line: %d", $%); }
+| type_qualifier declaration_specifiers                 { die("NYI @ %d", $%); }
 | function_specifier
-| function_specifier declaration_specifiers             { die("NYI line: %d", $%); }
+| function_specifier declaration_specifiers             { die("NYI @ %d", $%); }
 ;
 
 init_declarator_list
 : init_declarator
-| init_declarator_list ',' init_declarator              { die("NYI line: %d", $%); }
+| init_declarator_list ',' init_declarator              { die("NYI @ %d", $%); }
 ;
 
 init_declarator
 : declarator
-| declarator '=' initializer                            { die("NYI line: %d", $%); }
+| declarator '=' initializer                            { die("NYI @ %d", $%); }
 ;
 
 storage_class_specifier
-: TYPEDEF
-| EXTERN
-| STATIC
-| AUTO
-| REGISTER
+: TYPEDEF                                               { $$ = mktype(T_TYPEDEF); }
+| EXTERN                                                { $$ = mktype(T_EXTERN); }
+| STATIC                                                { $$ = mktype(T_STATIC); }
+| AUTO                                                  { $$ = mktype(T_AUTO); }
+| REGISTER                                              { $$ = mktype(T_REGISTER); }
 ;
 
 type_specifier
-: VOID                                                  { $<u>$ = T_VOID; }
-| CHAR                                                  { $<u>$ = T_CHR; }
-| SHORT
-| INT                                                   { $<u>$ = T_INT; }
-| LONG
-| FLOAT
-| DOUBLE                                                { $<u>$ = T_DBL; }
-| SIGNED
-| UNSIGNED
-| BOOL
-| COMPLEX
-| IMAGINARY
+: VOID                                                  { $$ = mktype(T_VOID); }
+| CHAR                                                  { $$ = mktype(T_CHAR); }
+| SHORT                                                 { $$ = mktype(T_SHORT); }
+| INT                                                   { $$ = mktype(T_INT); }
+| LONG                                                  { $$ = mktype(T_LONG); }
+| FLOAT                                                 { $$ = mktype(T_FLOAT); }
+| DOUBLE                                                { $$ = mktype(T_DOUBLE); }
+| SIGNED                                                { $$ = mktype(T_SIGNED); }
+| UNSIGNED                                              { $$ = mktype(T_UNSIGNED); }
+| BOOL                                                  { $$ = mktype(T_BOOL); }
+| COMPLEX                                               { $$ = mktype(T_COMPLEX); }
+| IMAGINARY                                             { $$ = mktype(T_IMAGINARY); }
 | struct_or_union_specifier
 | enum_specifier
-| TYPE_NAME
+| TYPE_NAME                                             { die("NYI @ %d", $%); }
 ;
 
 struct_or_union_specifier
-: struct_or_union IDENTIFIER '{' struct_declaration_list '}'    { die("NYI line: %d", $%); }
-| struct_or_union '{' struct_declaration_list '}'               { die("NYI line: %d", $%); }
-| struct_or_union IDENTIFIER                                    { die("NYI line: %d", $%); }
+: struct_or_union IDENTIFIER '{' struct_declaration_list '}'    { die("NYI @ %d", $%); }
+| struct_or_union '{' struct_declaration_list '}'               { die("NYI @ %d", $%); }
+| struct_or_union IDENTIFIER                                    { die("NYI @ %d", $%); }
 ;
 
 struct_or_union
-: STRUCT
-| UNION
+: STRUCT                                                { $$ = mktype(T_STRUCT); }
+| UNION                                                 { $$ = mktype(T_UNION); }
 ;
 
 struct_declaration_list
 : struct_declaration
-| struct_declaration_list struct_declaration            { die("NYI line: %d", $%); }
+| struct_declaration_list struct_declaration            { die("NYI @ %d", $%); }
 ;
 
 struct_declaration
-: specifier_qualifier_list struct_declarator_list ';'   { die("NYI line: %d", $%); }
+: specifier_qualifier_list struct_declarator_list ';'   { die("NYI @ %d", $%); }
 ;
 
 specifier_qualifier_list
-: type_specifier specifier_qualifier_list               { die("NYI line: %d", $%); }
+: type_specifier specifier_qualifier_list               { die("NYI @ %d", $%); }
 | type_specifier
-| type_qualifier specifier_qualifier_list               { die("NYI line: %d", $%); }
+| type_qualifier specifier_qualifier_list               { die("NYI @ %d", $%); }
 | type_qualifier
 ;
 
 struct_declarator_list
 : struct_declarator
-| struct_declarator_list ',' struct_declarator          { die("NYI line: %d", $%); }
+| struct_declarator_list ',' struct_declarator          { die("NYI @ %d", $%); }
 ;
 
 struct_declarator
 : declarator
-| ':' constant_expression                               { die("NYI line: %d", $%); }
-| declarator ':' constant_expression                    { die("NYI line: %d", $%); }
+| ':' constant_expression                               { die("NYI @ %d", $%); }
+| declarator ':' constant_expression                    { die("NYI @ %d", $%); }
 ;
 
 enum_specifier
-: ENUM '{' enumerator_list '}'                          { die("NYI line: %d", $%); }
-| ENUM IDENTIFIER '{' enumerator_list '}'               { die("NYI line: %d", $%); }
-| ENUM '{' enumerator_list ',' '}'                      { die("NYI line: %d", $%); }
-| ENUM IDENTIFIER '{' enumerator_list ',' '}'           { die("NYI line: %d", $%); }
+: ENUM '{' enumerator_list '}'                          { die("NYI @ %d", $%); }
+| ENUM IDENTIFIER '{' enumerator_list '}'               { die("NYI @ %d", $%); }
+| ENUM '{' enumerator_list ',' '}'                      { die("NYI @ %d", $%); }
+| ENUM IDENTIFIER '{' enumerator_list ',' '}'           { die("NYI @ %d", $%); }
 | ENUM IDENTIFIER
 ;
 
 enumerator_list
 : enumerator
-| enumerator_list ',' enumerator                        { die("NYI line: %d", $%); }
+| enumerator_list ',' enumerator                        { die("NYI @ %d", $%); }
 ;
 
 enumerator
@@ -1124,107 +1169,107 @@ enumerator
 ;
 
 type_qualifier
-: CONST                                                 { die("CONST NYI"); }
-| RESTRICT                                              { die("RESTRICT NYI"); }
-| VOLATILE                                              { die("VOLATILE NYI"); }
+: CONST                                                 { $$ = mktype(T_CONST); }
+| RESTRICT                                              { $$ = mktype(T_RESTRICT); }
+| VOLATILE                                              { $$ = mktype(T_VOLATILE); }
 ;
 
 function_specifier
-: INLINE                                                { die("INLINE NYI"); }
+: INLINE                                                { $$ = mktype(T_INLINE); }
 ;
 
 declarator
-: pointer direct_declarator                             { die("NYI line: %d", $%); }
+: pointer direct_declarator                             { die("NYI @ %d", $%); }
 | direct_declarator
 ;
 
 
 direct_declarator
 : IDENTIFIER
-| '(' declarator ')'                                                            { die("NYI line: %d", $%); }
-| direct_declarator '[' type_qualifier_list assignment_expression ']'           { die("NYI line: %d", $%); }
-| direct_declarator '[' type_qualifier_list ']'                                 { die("NYI line: %d", $%); }
-| direct_declarator '[' assignment_expression ']'                               { die("NYI line: %d", $%); }
-| direct_declarator '[' STATIC type_qualifier_list assignment_expression ']'    { die("NYI line: %d", $%); }
-| direct_declarator '[' type_qualifier_list STATIC assignment_expression ']'    { die("NYI line: %d", $%); }
-| direct_declarator '[' type_qualifier_list '*' ']'                             { die("NYI line: %d", $%); }
-| direct_declarator '[' '*' ']'                                                 { die("NYI line: %d", $%); }
-| direct_declarator '[' ']'                                                     { die("NYI line: %d", $%); }
-| direct_declarator '(' parameter_type_list ')'                                 { die("NYI line: %d", $%); }
-| direct_declarator '(' identifier_list ')'                                     { die("NYI line: %d", $%); }
-| direct_declarator '(' ')'                                                     { die("NYI line: %d", $%); }
+| '(' declarator ')'                                                            { die("NYI @ %d", $%); }
+| direct_declarator '[' type_qualifier_list assignment_expression ']'           { die("NYI @ %d", $%); }
+| direct_declarator '[' type_qualifier_list ']'                                 { die("NYI @ %d", $%); }
+| direct_declarator '[' assignment_expression ']'                               { die("NYI @ %d", $%); }
+| direct_declarator '[' STATIC type_qualifier_list assignment_expression ']'    { die("NYI @ %d", $%); }
+| direct_declarator '[' type_qualifier_list STATIC assignment_expression ']'    { die("NYI @ %d", $%); }
+| direct_declarator '[' type_qualifier_list '*' ']'                             { die("NYI @ %d", $%); }
+| direct_declarator '[' '*' ']'                                                 { die("NYI @ %d", $%); }
+| direct_declarator '[' ']'                                                     { die("NYI @ %d", $%); }
+| direct_declarator '(' parameter_type_list ')'                                 { $$ = node(pt_direct_declarator, $1, $3); }
+| direct_declarator '(' identifier_list ')'                                     { die("NYI @ %d", $%); }
+| direct_declarator '(' ')'                                                     { die("NYI @ %d", $%); }
 ;
 
 pointer                                                 
-: '*'                                                   { die("* NYI"); }
-| '*' type_qualifier_list                               { die("* type_qualifier_list NYI"); }
-| '*' pointer                                           { die("* pointer NYI"); }
-| '*' type_qualifier_list pointer                       { die("* type_qualifier_list pointer NYI"); }
+: '*'                                                   { die("* NYI @ %d", $%); }
+| '*' type_qualifier_list                               { die("* type_qualifier_list NYI @ %d", $%); }
+| '*' pointer                                           { die("* pointer NYI @ %d", $%); }
+| '*' type_qualifier_list pointer                       { die("* type_qualifier_list pointer NYI @ %d", $%); }
 ;
 
 type_qualifier_list
 : type_qualifier
-| type_qualifier_list type_qualifier                    { die("NYI line: %d", $%); }
+| type_qualifier_list type_qualifier                    { die("NYI @ %d", $%); }
 ;
 
 
 parameter_type_list
 : parameter_list
-| parameter_list ',' ELLIPSIS                           { die("NYI line: %d", $%); }
+| parameter_list ',' ELLIPSIS                           { die("NYI @ %d", $%); }
 ;
 
 parameter_list
 : parameter_declaration
-| parameter_list ',' parameter_declaration              { die("NYI line: %d", $%); }
+| parameter_list ',' parameter_declaration              { $$ = bindr($1, $3, $%); }
 ;
 
 parameter_declaration
-: declaration_specifiers declarator                     { die("NYI line: %d", $%); }
-| declaration_specifiers abstract_declarator            { die("NYI line: %d", $%); }
+: declaration_specifiers declarator                     { $$ = c99_mkparam($1, $2); }
+| declaration_specifiers abstract_declarator            { die("NYI @ %d", $%); }
 | declaration_specifiers
 ;
 
 identifier_list
 : IDENTIFIER
-| identifier_list ',' IDENTIFIER                        { die("NYI line: %d", $%); }
+| identifier_list ',' IDENTIFIER                        { die("NYI @ %d", $%); }
 ;
 
 type_name
 : specifier_qualifier_list
-| specifier_qualifier_list abstract_declarator          { die("NYI line: %d", $%); }
+| specifier_qualifier_list abstract_declarator          { die("NYI @ %d", $%); }
 ;
 
 abstract_declarator
 : pointer
 | direct_abstract_declarator
-| pointer direct_abstract_declarator                    { die("NYI line: %d", $%); }
+| pointer direct_abstract_declarator                    { die("NYI @ %d", $%); }
 ;
 
 direct_abstract_declarator
-: '(' abstract_declarator ')'                               { die("NYI line: %d", $%); }
-| '[' ']'                                                   { die("NYI line: %d", $%); }
-| '[' assignment_expression ']'                             { die("NYI line: %d", $%); }
-| direct_abstract_declarator '[' ']'                        { die("NYI line: %d", $%); }
-| direct_abstract_declarator '[' assignment_expression ']'  { die("NYI line: %d", $%); }
-| '[' '*' ']'                                               { die("NYI line: %d", $%); }
-| direct_abstract_declarator '[' '*' ']'                    { die("NYI line: %d", $%); }
-| '(' ')'                                                   { die("NYI line: %d", $%); }
-| '(' parameter_type_list ')'                               { die("NYI line: %d", $%); }
-| direct_abstract_declarator '(' ')'                        { die("NYI line: %d", $%); }
-| direct_abstract_declarator '(' parameter_type_list ')'    { die("NYI line: %d", $%); }
+: '(' abstract_declarator ')'                               { die("NYI @ %d", $%); }
+| '[' ']'                                                   { die("NYI @ %d", $%); }
+| '[' assignment_expression ']'                             { die("NYI @ %d", $%); }
+| direct_abstract_declarator '[' ']'                        { die("NYI @ %d", $%); }
+| direct_abstract_declarator '[' assignment_expression ']'  { die("NYI @ %d", $%); }
+| '[' '*' ']'                                               { die("NYI @ %d", $%); }
+| direct_abstract_declarator '[' '*' ']'                    { die("NYI @ %d", $%); }
+| '(' ')'                                                   { die("NYI @ %d", $%); }
+| '(' parameter_type_list ')'                               { die("NYI @ %d", $%); }
+| direct_abstract_declarator '(' ')'                        { die("NYI @ %d", $%); }
+| direct_abstract_declarator '(' parameter_type_list ')'    { die("NYI @ %d", $%); }
 ;
 
 initializer
 : assignment_expression
-| '{' initializer_list '}'                              { die("NYI line: %d", $%); }
-| '{' initializer_list ',' '}'                          { die("NYI line: %d", $%); }
+| '{' initializer_list '}'                              { die("NYI @ %d", $%); }
+| '{' initializer_list ',' '}'                          { die("NYI @ %d", $%); }
 ;
 
 initializer_list
 : initializer
 | designation initializer                               { $$ = bindr($1, $2, $%); }
-| initializer_list ',' initializer                      { die("NYI line: %d", $%); }
-| initializer_list ',' designation initializer          { die("NYI line: %d", $%); }
+| initializer_list ',' initializer                      { die("NYI @ %d", $%); }
+| initializer_list ',' designation initializer          { die("NYI @ %d", $%); }
 ;
 
 designation
@@ -1233,7 +1278,7 @@ designation
 
 designator_list
 : designator
-| designator_list designator                            { die("NYI line: %d", $%); }
+| designator_list designator                            { die("NYI @ %d", $%); }
 ;
 
 designator
@@ -1263,7 +1308,7 @@ compound_statement
 
 block_item_list
 : block_item
-| block_item_list block_item                            { die("NYI line: %d", $%); }
+| block_item_list block_item                            { die("NYI @ %d", $%); }
 ;
 
 block_item
@@ -1283,14 +1328,14 @@ selection_statement
 ;
 
 iteration_statement
-: WHILE '(' expression ')' statement                                    { die("NYI line: %d", $%); }
-| DO statement WHILE '(' expression ')' ';'                             { die("NYI line: %d", $%); }
-| FOR '(' expression_statement expression_statement ')' statement       { die("NYI line: %d", $%); }
+: WHILE '(' expression ')' statement                                    { die("NYI @ %d", $%); }
+| DO statement WHILE '(' expression ')' ';'                             { die("NYI @ %d", $%); }
+| FOR '(' expression_statement expression_statement ')' statement       { die("NYI @ %d", $%); }
 | FOR '(' expression_statement
     expression_statement expression ')'
-    statement                                                           { die("NYI line: %d", $%); }
-| FOR '(' declaration expression_statement ')' statement                { die("NYI line: %d", $%); }
-| FOR '(' declaration expression_statement expression ')' statement     { die("NYI line: %d", $%); }
+    statement                                                           { die("NYI @ %d", $%); }
+| FOR '(' declaration expression_statement ')' statement                { die("NYI @ %d", $%); }
+| FOR '(' declaration expression_statement expression ')' statement     { die("NYI @ %d", $%); }
 ;
 
 jump_statement
@@ -1303,7 +1348,7 @@ jump_statement
 
 translation_unit
 : external_declaration
-| translation_unit external_declaration                 { die("NYI line: %d", $%); }
+| translation_unit external_declaration
 ;
 
 external_declaration
@@ -1312,8 +1357,8 @@ external_declaration
 ;
 
 function_definition
-: declaration_specifiers declarator declaration_list compound_statement     { startFunc(0, $2, $3); finishFunc($4); }
-| declaration_specifiers declarator compound_statement                      { startFunc(0, $2, 0); finishFunc($3); }
+: declaration_specifiers declarator declaration_list compound_statement     { c99_emitfunc($1, $2, $3, $4); }
+| declaration_specifiers declarator compound_statement                      { c99_emitfunc($1, $2, 0, $3); }
 ;
 
 declaration_list
@@ -1328,25 +1373,47 @@ declaration_list
 
 
 
+
 int yylex() {
     struct {
         char *s;
         int t;
     } kwds[] = {
-            { "void", VOID },
-            { "char", CHAR },
-            { "short", SHORT },
-            { "int", INT },
-            { "long", LONG },
-            { "double", DOUBLE },
-            { "if", IF },
-            { "else", ELSE },
-            { "for", FOR },
-            { "while", WHILE },
-            { "return", RETURN },
-            { "break", BREAK },
-            { "sizeof", SIZEOF },
-            { 0, 0 }
+        { "void", VOID },
+        { "char", CHAR },
+        { "short", SHORT },
+        { "int", INT },
+        { "long", LONG },
+        { "float", FLOAT },
+        { "double", DOUBLE },
+        { "signed", SIGNED },
+        { "unsigned", UNSIGNED },
+        { "bool", BOOL },
+        { "complex", COMPLEX },
+        { "imaginary", IMAGINARY },
+
+        { "if", IF },
+        { "else", ELSE },
+        { "for", FOR },
+        { "do", DO },
+        { "while", WHILE },
+        { "switch", SWITCH },
+        { "case", CASE },
+        { "default", DEFAULT },
+        { "goto", GOTO },
+        { "continue", CONTINUE },
+        { "return", RETURN },
+        { "break", BREAK },
+
+        { "sizeof", SIZEOF },
+        { "typedef", TYPEDEF },
+        { "extern", EXTERN },
+        { "static", STATIC },
+        { "auto", AUTO },
+        { "register", REGISTER },
+        { "struct", STRUCT },
+        { "union", UNION },
+        { 0, 0 }
     };
     int i, c, c2, c3, n;
     char v[NString], *p;
@@ -1673,10 +1740,10 @@ void ppCtype(unsigned long t) {
         case T_INT:
             fprintf(stderr, "int ");
             break;
-        case T_LNG:
+        case T_LONG:
             fprintf(stderr, "long ");
             break;
-        case T_DBL:
+        case T_DOUBLE:
             fprintf(stderr, "double ");
             break;
         case T_FUN:
