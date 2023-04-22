@@ -1,4 +1,4 @@
-BIN = ../minc99
+BIN = ../_minc99
 
 CFLAGS += -g -Wall
 

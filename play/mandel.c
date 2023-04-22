@@ -17,8 +17,7 @@ int W;
 int H;
 int *col;
 
-plot(int x, int y)
-{
+plot(int x, int y) {
 	int n;
 	int fx;
 	int fy;

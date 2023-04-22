@@ -1,7 +1,7 @@
 #!/bin/sh
 
 DIR=`cd $(dirname $0); pwd`
-MMC=$DIR/minc
+MMC=$DIR/_minc
 
 usage()
 {
@@ -9,23 +9,6 @@ usage()
 	echo "usage: mcc [cc flags] file.c" >&2
 	exit 1
 }
-
-#for i
-#do
-#	case $i in
-#	-*)
-#		flags="$flags $i"
-#		;;
-#	*)
-#		if ! test -z $file
-#		then
-#			usage
-#		fi
-#		file=$i
-#		;;
-#	esac
-#done
-
 
 for i
 do

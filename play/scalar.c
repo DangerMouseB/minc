@@ -1,6 +1,5 @@
 
-
-double *scalarProduct(double *A, double *B, int strideA, int strideB, int n) {
+double scalarProduct(double *A, double *B, int strideA, int strideB, int n) {
     int i, oA, oB;  double sum;
     oA = 0;
     oB = 0;
