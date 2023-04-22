@@ -102,11 +102,13 @@ typedef struct VarEntry {
     int glo;
 } VarEntry;
 
+#define SEED_START 1
+
 int gLevel;
 FILE *of;
 int line, nglo;
 int lbl = 0;            // seed for labels
-int tmp = 0;            // seed for temporary variables in a function
+int tmp = SEED_START;            // seed for temporary variables in a function
 char *globals[NGlo];
 VarEntry varh[NVar];
 char srcFfn[1000];     // should be long enough for a filename
@@ -836,7 +838,7 @@ void startFunc(unsigned long t, Node *fnname, Node *params) {
         }
     putq(") {\n");
     putq(LABEL "%d\n", lbl++);
-    for (i=0, n=params; n; i++, n=n->r) {
+    for (i=SEED_START, n=params; n; i++, n=n->r) {
         s = varget(n->s.u.v);
         m = SIZE(s->ctyp);
         putq("\t" LOCAL "%s =l alloc%d %d\n", n->s.u.v, m, m);
@@ -851,7 +853,7 @@ void finishFunc(Node *s) {
     if (!emitstmt(s, -1)) putq("\tret 0\n");
     putq("}\n\n");
     varclr();
-    tmp = 1;
+    tmp = SEED_START;
 }
 
 
