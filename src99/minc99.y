@@ -105,8 +105,8 @@ typedef struct VarEntry {
 int gLevel;
 FILE *of;
 int line, nglo;
-int lbl = 1;            // seed for labels
-int tmp = 1;            // seed for temporary variables in a function
+int lbl = 0;            // seed for labels
+int tmp = 0;            // seed for temporary variables in a function
 char *globals[NGlo];
 VarEntry varh[NVar];
 char srcFfn[1000];     // should be long enough for a filename
@@ -170,6 +170,8 @@ enum op {
 
     OP_IIF      = _lvns+25,
 
+    OP_FRED     = _lvns+26,
+
 
     // access
     NAME        = _ac+1,
@@ -216,7 +218,7 @@ enum op {
     T_REGISTER  = _o+6,
     T_STRUCT    = _o+7,
     T_UNION     = _o+8,
-    
+
     T_CONST     = _o+9,
     T_RESTRICT  = _o+10,
     T_VOLATILE  = _o+11,
@@ -541,6 +543,13 @@ void emitcall(Node *n, Symb *sr) {
     putq("...)\n");
 }
 
+static const char neltl[] = {
+        OP_NE,
+        OP_EQ,
+        OP_LT,
+        OP_LE,
+};
+
 
 Symb emitexpr(Node *n) {
     static char *otoa[] = {
@@ -603,7 +612,7 @@ Symb emitexpr(Node *n) {
             sr.ctyp = T_INT;
             break;
 
-        case 'S':
+        case OP_FRED:
             sr.t = Glo;
             sr.u.n = n->s.u.n;
             sr.ctyp = IDIR(T_INT);
@@ -664,7 +673,7 @@ Symb emitexpr(Node *n) {
             o = n->op;
         Binop:
             sr.ctyp = prom(o, &s0, &s1);
-            if (strchr("ne<l", n->op)) {
+            if (strchr(neltl, n->op)) {
                 sprintf(ty, "%c", irtyp(sr.ctyp));
                 sr.ctyp = T_INT;
             } else
@@ -1366,11 +1375,9 @@ declaration_list
 | declaration_list declaration                          { $$ = node(Seq, $1, $2); }
 ;
 
-
 %%
 
 #include <stdio.h>
-
 
 
 
@@ -1540,7 +1547,7 @@ int yylex() {
         strcpy(&p[i], "\", b 0 }");
         if (nglo == NGlo) die("too many globals");
         globals[nglo] = p;
-        yylval.n = node('S', 0, 0);
+        yylval.n = node(OP_FRED, 0, 0);
         yylval.n->s.u.n = nglo++;
         PP(lex, "%s ", &p[i]);
         return STRING_LITERAL;

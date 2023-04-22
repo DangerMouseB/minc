@@ -104,7 +104,9 @@ typedef struct VarEntry {
 
 int gLevel;
 FILE *of;
-int line, lbl, tmp, nglo;
+int line, nglo;
+int lbl = 0;            // seed for labels
+int tmp = 0;            // seed for temporary variables in a function
 char *globals[NGlo];
 VarEntry varh[NVar];
 char srcFfn[1000];     // should be long enough for a filename
@@ -124,72 +126,132 @@ void putq(char *src, ...);
 
 // C and QBE IR
 
+#define _lvns 0
+#define _ac _lvns+30
+#define _lvse _ac+10
+#define _nvse _lvse+10
+#define _nvns _nvse+10
+#define _o _nvns+20
+#define _pt 255
 
-enum {
-    T_VOID,
-    T_CHR,
-    T_INT,
-    T_LNG,
-    T_DBL,
-    T_PTR,
-    T_FUN,
+enum op {
+
+    // local value with no direct side effect
+    Expr        = _lvns+1,
+
+    LIT_INT     = _lvns+2,
+    LIT_DEC     = _lvns+3,
+    LIT_STR     = _lvns+4,
+    LIT_BOOL    = _lvns+5,
+
+    OP_CALL     = _lvns+6,
+
+    OP_ADD      = _lvns+7,
+    OP_SUB      = _lvns+8,
+    OP_MUL      = _lvns+9,
+    OP_DIV      = _lvns+10,
+    OP_MOD      = _lvns+11,
+    OP_LSHIFT   = _lvns+12,
+    OP_RSHIFT   = _lvns+13,
+
+    OP_EQ       = _lvns+14,
+    OP_NE       = _lvns+15,
+    OP_LE       = _lvns+16,
+    OP_LT       = _lvns+17,
+
+    OP_AND      = _lvns+18,
+    OP_OR       = _lvns+19,
+    OP_NOT      = _lvns+20,
+
+    OP_BAND     = _lvns+21,
+    OP_BOR      = _lvns+22,
+    OP_BINV     = _lvns+23,
+    OP_BXOR     = _lvns+24,
+
+    OP_IIF      = _lvns+25,
+
+    OP_FRED     = _lvns+26,
+
+
+    // access
+    NAME        = _ac+1,
+    OP_ATTR     = _ac+2,       // e.g. x.name
+    OP_INDEX    = _ac+3,       // e.g. xs[0]
+    OP_ADDR     = _ac+4,
+    OP_DEREF    = _ac+5,
+
+
+    // local value with direct side effect
+    OP_INC      = _lvse+1,
+    OP_DEC      = _lvse+2,
+
+
+    // no local value with direct side effect
+    OP_ASSIGN   = _nvse+1,
+    OP_ADD_EQ   = _nvse+2,
+    OP_SUB_EQ   = _nvse+3,
+
+
+    // no local value with no direct side effect
+    Label       = _nvns+1,
+    If          = _nvns+2,
+    IfElse      = _nvns+3,
+    Else        = _nvns+4,
+    While       = _nvns+5,      // for is implemented in terms of while
+    Select      = _nvns+6,
+    Case        = _nvns+7,
+    Default     = _nvns+8,
+    Goto        = _nvns+9,
+    Continue    = _nvns+10,
+    Break       = _nvns+11,
+    Ret         = _nvns+12,
+    Seq         = _nvns+13,
+    Do          = _nvns+14,
+
+
+    // other
+    Type        = _o+1,
+    T_TYPEDEF   = _o+2,
+    T_EXTERN    = _o+3,
+    T_STATIC    = _o+4,
+    T_AUTO      = _o+5,
+    T_REGISTER  = _o+6,
+    T_STRUCT    = _o+7,
+    T_UNION     = _o+8,
+
+    T_CONST     = _o+9,
+    T_RESTRICT  = _o+10,
+    T_VOLATILE  = _o+11,
+    T_INLINE    = _o+12,
+
+    T_VOID      = _o+13,
+    T_CHAR      = _o+14,
+    T_SHORT     = _o+15,
+    T_INT       = _o+16,
+    T_LONG      = _o+17,
+    T_FLOAT     = _o+18,
+    T_DOUBLE    = _o+19,
+    T_SIGNED    = _o+20,
+    T_UNSIGNED  = _o+21,
+    T_BOOL      = _o+22,
+    T_COMPLEX   = _o+23,
+    T_IMAGINARY = _o+24,
+
+    T_PTR       = _o+25,
+    T_FUN       = _o+26,
+
 };
 
-#define IDIR(x) (((x) << 3) + T_PTR)
-#define FUNC(x) (((x) << 3) + T_FUN)
-#define DREF(x) ((x) >> 3)
-#define KIND(x) ((x) & 7)
+#define IDIR(x) (((x) << 8) + T_PTR)
+#define FUNC(x) (((x) << 8) + T_FUN)
+#define DREF(x) ((x) >> 8)
+#define KIND(x) ((x) & 255)
 #define SIZE(x) (                                   \
     x == T_VOID ? (die("void has no size"), 0) : (  \
 	x == T_INT ? 4 : (                              \
 	8                                               \
 )))
 
-enum op {
-    NAME = 86,
-    If = 128,
-    IfElse = 129,
-    Else = 130,
-    While = 131,
-    Expr = 132,
-    Break = 133,
-    Ret = 134,
-    Seq = 135,
-    Ptr = 136,
-    ADD_EQ = 137,
-    SUB_EQ = 138,
-};
-
-#define OP_CALL 'C'
-#define OP_ASSIGN '='
-
-#define OP_EQ   'e'
-#define OP_NE   'n'
-#define OP_LE   'l'
-#define OP_LT   '<'
-#define OP_AND  'a'
-#define OP_OR   'o'
-#define OP_NOT  '!'
-
-#define OP_BAND '&'
-#define OP_BOR  '|'
-#define OP_BINV '~'
-#define OP_BXOR '^'
-
-#define OP_ADD  '+'
-#define OP_SUB  '-'
-#define OP_MUL  '*'
-#define OP_DIV  '/'
-#define OP_REM  '%'
-
-#define OP_DEREF '@'
-#define OP_ADDR  'A'
-
-#define OP_INC  'P'
-#define OP_DEC  'M'
-
-#define LIT_INT 'N'
-#define LIT_DEC 'D'
 
 
 #define GLOBAL  "$g"
@@ -245,6 +307,10 @@ Symb * varget(char *v);
 void ppCtype(unsigned long t);
 
 
+// parse tree construction
+enum {
+    pt_direct_declarator = _pt+1,
+};
 
 
 // Node construction
@@ -266,14 +332,18 @@ Node * mkneg(Node *n) {
 }
 
 
-Node * mkparam(char *v, unsigned ctyp, Node *pl) {
+Node * mkparam(char *v, unsigned ctyp, Node *others) {
     if (ctyp == T_VOID) die("invalid void declaration");
-    Node *n = node(0, 0, pl);
+    Node *n = node(0, 0, others);
     varadd(v, 0, ctyp);
     strcpy(n->s.u.v, v);
     return n;
 }
 
+Node * c99_mkparam(Node *ds, Node *d) {
+    // declaration_specifiers declarator
+    return mkparam(d->s.u.v, ds->s.ctyp, 0);
+}
 
 Node * mkifelse(void *c, Node *t, Node *f) {
     return node(IfElse, c, node(Else, t, f));
@@ -304,6 +374,21 @@ Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s) {
 }
 
 
+Node * mkopassign(Node *op, Node *l, Node *r) {
+    op->l = l;
+    op->r = r;
+    return node(OP_ASSIGN, l, op);
+}
+
+
+Node * mktype(int t) {
+    Node * n = node(Type, 0, 0);
+    n->s.ctyp = t;
+    return n;
+}
+
+
+
 // emission
 
 void emitsymb(Symb s) {
@@ -328,12 +413,12 @@ char irtyp(unsigned ctyp) {
     switch (KIND(ctyp)) {
         case T_VOID: die("void has no size");
         case T_INT: return 'w';
-        case T_LNG: return 'l';
-        case T_DBL: return 'd';
+        case T_LONG: return 'l';
+        case T_DOUBLE: return 'd';
         case T_PTR: return 'l';
         case T_FUN: return 'l';
     }
-    die("unhandled type");
+    die("unhandled type %d @ %d", KIND(ctyp), __LINE__);
     return 'l';
 }
 
@@ -343,7 +428,7 @@ void l_extsw(Symb *s) {
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
-    s->ctyp = T_LNG;
+    s->ctyp = T_LONG;
     s->u.n = tmp++;
 }
 
@@ -353,7 +438,7 @@ void d_swtof(Symb *s) {
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
-    s->ctyp = T_DBL;
+    s->ctyp = T_DOUBLE;
     s->u.n = tmp++;
 }
 
@@ -363,7 +448,7 @@ void d_sltof(Symb *s) {
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
-    s->ctyp = T_DBL;
+    s->ctyp = T_DOUBLE;
     s->u.n = tmp++;
 }
 
@@ -375,21 +460,21 @@ unsigned prom(int op, Symb *l, Symb *r) {
     if (l->ctyp == r->ctyp && KIND(l->ctyp) != T_PTR)
         return l->ctyp;
 
-    if (l->ctyp == T_LNG && r->ctyp == T_INT) {
+    if (l->ctyp == T_LONG && r->ctyp == T_INT) {
         l_extsw(r);
-        return T_LNG;
+        return T_LONG;
     }
-    if (l->ctyp == T_INT && r->ctyp == T_LNG) {
+    if (l->ctyp == T_INT && r->ctyp == T_LONG) {
         l_extsw(l);
-        return T_LNG;
+        return T_LONG;
     }
-    if (l->ctyp == T_DBL && r->ctyp == T_INT) {
+    if (l->ctyp == T_DOUBLE && r->ctyp == T_INT) {
         d_swtof(r);
-        return T_DBL;
+        return T_DOUBLE;
     }
-    if (l->ctyp == T_DBL && r->ctyp == T_LNG) {
+    if (l->ctyp == T_DOUBLE && r->ctyp == T_LONG) {
         d_sltof(r);
-        return T_DBL;
+        return T_DOUBLE;
     }
 
     if (op == OP_ADD) {
@@ -408,7 +493,7 @@ unsigned prom(int op, Symb *l, Symb *r) {
         if (KIND(l->ctyp) != T_PTR) die("pointer substracted from integer");
         if (KIND(r->ctyp) != T_PTR) goto Scale;
         if (l->ctyp != r->ctyp) die("non-homogeneous pointers in substraction");
-        return T_LNG;
+        return T_LONG;
     }
 
 Scale:
@@ -458,6 +543,13 @@ void emitcall(Node *n, Symb *sr) {
     putq("...)\n");
 }
 
+static const char neltl[] = {
+        OP_NE,
+        OP_EQ,
+        OP_LT,
+        OP_LE,
+};
+
 
 Symb emitexpr(Node *n) {
     static char *otoa[] = {
@@ -465,7 +557,7 @@ Symb emitexpr(Node *n) {
             [OP_SUB] = "sub",
             [OP_MUL] = "mul",
             [OP_DIV] = "div",
-            [OP_REM] = "rem",
+            [OP_MOD] = "rem",
             [OP_BAND] = "and",
             [OP_LT] = "cslt",  /* meeeeh, wrong for pointers! */
             [OP_LE] = "csle",
@@ -511,7 +603,7 @@ Symb emitexpr(Node *n) {
         case LIT_DEC:
             sr.t = Con;
             sr.u.d = n->s.u.d;
-            sr.ctyp = T_DBL;
+            sr.ctyp = T_DOUBLE;
             break;
 
         case LIT_INT:
@@ -520,7 +612,7 @@ Symb emitexpr(Node *n) {
             sr.ctyp = T_INT;
             break;
 
-        case 'S':
+        case OP_FRED:
             sr.t = Glo;
             sr.u.n = n->s.u.n;
             sr.ctyp = IDIR(T_INT);
@@ -543,19 +635,13 @@ Symb emitexpr(Node *n) {
             sr.ctyp = IDIR(sr.ctyp);
             break;
 
-        case ADD_EQ:
-            die("+= NYI");
-
-        case SUB_EQ:
-            die("-= NYI");
-
         case OP_ASSIGN:
             s0 = emitexpr(n->r);
             s1 = lval(n->l);
             sr = s0;
-            if (s1.ctyp == T_LNG && s0.ctyp == T_INT) l_extsw(&s0);
-            if (s1.ctyp == T_DBL && s0.ctyp == T_INT) d_swtof(&s0);
-            if (s1.ctyp == T_DBL && s0.ctyp == T_LNG) d_sltof(&s0);
+            if (s1.ctyp == T_LONG && s0.ctyp == T_INT) l_extsw(&s0);
+            if (s1.ctyp == T_DOUBLE && s0.ctyp == T_INT) d_swtof(&s0);
+            if (s1.ctyp == T_DOUBLE && s0.ctyp == T_LONG) d_sltof(&s0);
             if (s0.ctyp != IDIR(T_VOID) || KIND(s1.ctyp) != T_PTR)
                 if (s1.ctyp != IDIR(T_VOID) || KIND(s0.ctyp) != T_PTR)
                     if (s1.ctyp != s0.ctyp) {
@@ -587,7 +673,7 @@ Symb emitexpr(Node *n) {
             o = n->op;
         Binop:
             sr.ctyp = prom(o, &s0, &s1);
-            if (strchr("ne<l", n->op)) {
+            if (strchr(neltl, n->op)) {
                 sprintf(ty, "%c", irtyp(sr.ctyp));
                 sr.ctyp = T_INT;
             } else
@@ -730,18 +816,12 @@ int emitstmt(Node *s, int b) {
 }
 
 
-void initFunc() {
-    PP(emit, "initFunc\n");
-    varclr(); tmp = 0;
-}
-
-
-void startFunc(int t, Node *fnname, Node *params) {
+void startFunc(unsigned long t, Node *fnname, Node *params) {
     Symb *s;  Node *n;  int i, m;
     PP(emit, "startFunc");
 
-    varadd(fnname->s.u.v, 1, FUNC(T_INT));
-    putq("export function w $%s(", fnname->s.u.v);
+    varadd(fnname->s.u.v, 1, FUNC(t));
+    putq("export function %c $%s(", irtyp(t), fnname->s.u.v);
     n = params;
     if (n)
         for (;;) {
@@ -770,6 +850,19 @@ void finishFunc(Node *s) {
     PP(emit, "finishFunc");
     if (!emitstmt(s, -1)) putq("\tret 0\n");
     putq("}\n\n");
+    varclr();
+    tmp = 1;
+}
+
+
+void c99_emitfunc(Node *ds, Node *d, Node *dl, Node* cs) {
+    // declaration_specifiers declarator declaration_list compound_statement
+    if ((ds->s.ctyp != T_INT) && (ds->s.ctyp != T_DOUBLE)) die("ds->s.ctyp != T_INT @ %d", __LINE__);
+    if (d->op != pt_direct_declarator) die("d->op != pt_direct_declarator got %d @ %d", d->op, __LINE__);
+    if (d->l->op != NAME) die("d->l->op != NAME got %d @ %d", d->op, __LINE__);
+    startFunc(ds->s.ctyp, d->l, d->r);
+    finishFunc(cs);
+    return;
 }
 
 
@@ -804,12 +897,20 @@ void declareGlobal(int t, Node *globalname) {
     unsigned u;
 }
 
-%token STRING_LITERAL SIZEOF
-%token <n> CONSTANT IDENTIFIER
-%token INC_OP  DEC_OP  SIZEOF
+%token <n> IDENTIFIER CONSTANT STRING_LITERAL
+%token SIZEOF
+%token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
+%token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
+%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN
+%token XOR_ASSIGN OR_ASSIGN TYPE_NAME
 
-%token EXTERN
+%token TYPEDEF EXTERN STATIC AUTO REGISTER INLINE RESTRICT
 %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
+%token BOOL COMPLEX IMAGINARY
+%token STRUCT UNION ENUM ELLIPSIS
+
+%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
+
 %token LINE_COMMENT_
 %token ELLIPSIS
 
@@ -831,134 +932,157 @@ void declareGlobal(int t, Node *globalname) {
 
 %%
 
-prog: fdcl prog | gdcl prog | func prog | LINE_COMMENT_ prog |;
-
-
-type:
-    type '*'                        { $$ = IDIR($1); }
-    | INT                           { $$ = T_INT; }
-    | LONG                          { $$ = T_LNG; }
-    | DOUBLE                        { $$ = T_DBL; }
-    | VOID                          { $$ = T_VOID; }
+prog
+: fdcl prog
+| gdcl prog
+| func prog
+| LINE_COMMENT_ prog
+|
 ;
 
+type
+: type '*'                          { $$ = IDIR($1); }
+| INT                               { $$ = T_INT; }
+| LONG                              { $$ = T_LONG; }
+| DOUBLE                            { $$ = T_DOUBLE; }
+| VOID                              { $$ = T_VOID; }
+;
 
-fdcl:
-    type IDENTIFIER '(' types_ ')' ';' { varadd($2->s.u.v, 1, FUNC($1)); }
-    ;
+fdcl
+: type IDENTIFIER '(' types_ ')' ';' { varadd($2->s.u.v, 1, FUNC($1)); }
+;
 
-types_:
-    typesNoDots
-    | typesWithDots                 
-    |                               { $$ = 0; }
-    ;
+types_
+: typesNoDots
+| typesWithDots
+|                                   { $$ = 0; }
+;
 
-typesNoDots: type ',' typesNoDots   { $$ = newTLLHead($1, $3); }
-    | type                          { $$ = newTLLHead($1, 0); }
-    ;
+typesNoDots
+: type ',' typesNoDots              { $$ = newTLLHead($1, $3); }
+| type                              { $$ = newTLLHead($1, 0); }
+;
 
-typesWithDots: ELLIPSIS             { $$ = newTLLHead(-1, 0); }
-    | type ',' typesWithDots        { $$ = newTLLHead($1, $3); }
-    ;
+typesWithDots
+: ELLIPSIS                          { $$ = newTLLHead(-1, 0); }
+| type ',' typesWithDots            { $$ = newTLLHead($1, $3); }
+;
 
+gdcl
+: type IDENTIFIER ';'               { declareGlobal($1, $2); }
+;
 
-gdcl:
-    type IDENTIFIER ';'             { declareGlobal($1, $2); }
-    ;
+func
+: init prot '{' dcls stmts '}'      { finishFunc($5); }
+;
 
-
-func:
-    init prot '{' dcls stmts '}'    { finishFunc($5); }
-    ;
-
-init:                               { initFunc(); }
-    ;
+init
+:                                   {varclr(); tmp = 0;}
+;
 
 prot:
-IDENTIFIER '(' params_ ')'          { startFunc(0, $1, $3); }
+IDENTIFIER '(' params_ ')'          { startFunc(T_INT, $1, $3); }
 ;
 
-params_: params
-    |                               { $$ = 0; }
-    ;
-params: type IDENTIFIER ',' params  { $$ = mkparam($2->s.u.v, $1, $4); }
-    | type IDENTIFIER               { $$ = mkparam($2->s.u.v, $1, 0); }
-    ;
-dcls: | dcls type IDENTIFIER ';'    { emitLocalDecl($2, $3); }
+params_
+: params
+|                                   { $$ = 0; }
 ;
 
+params
+: type IDENTIFIER ',' params        { $$ = mkparam($2->s.u.v, $1, $4); }
+| type IDENTIFIER                   { $$ = mkparam($2->s.u.v, $1, 0); }
+;
 
-stmts: stmts stmt                   { $$ = node(Seq, $1, $2); /* https://en.wikipedia.org/wiki/Dangling_else */ }
-    |                               { $$ = 0; }
-    ;
+dcls
+:
+| dcls type IDENTIFIER ';'          { emitLocalDecl($2, $3); }
+;
 
-stmt: open
-    | closed;
+stmts
+: stmts stmt                        { $$ = node(Seq, $1, $2); /* https://en.wikipedia.org/wiki/Dangling_else */ }
+|                                   { $$ = 0; }
+;
 
-open: IF '(' expr ')' stmt                          { $$ = node(If, $3, $5); }
-    | IF '(' expr ')' closed ELSE open              { $$ = mkifelse($3, $5, $7); }
-    | WHILE '(' expr ')' open                       { $$ = node(While, $3, $5); }
-    | FOR '(' expr_ ';' expr_ ';' expr_ ')' open    { $$ = mkfor($3, $5, $7, $9); }
-    ;
+stmt
+: open
+| closed;
 
-closed: simple
-    | IF '(' expr ')' closed ELSE closed            { $$ = mkifelse($3, $5, $7); }
-    | WHILE '(' expr ')' closed                     { $$ = node(While, $3, $5); }
-    | FOR '(' expr_ ';' expr_ ';' expr_ ')' closed  { $$ = mkfor($3, $5, $7, $9); }
-    ;
+open
+: IF '(' expr ')' stmt                          { $$ = node(If, $3, $5); }
+| IF '(' expr ')' closed ELSE open              { $$ = mkifelse($3, $5, $7); }
+| WHILE '(' expr ')' open                       { $$ = node(While, $3, $5); }
+| FOR '(' expr_ ';' expr_ ';' expr_ ')' open    { $$ = mkfor($3, $5, $7, $9); }
+;
 
-simple: ';'                         { $$ = 0; }
-    | LINE_COMMENT_                 { $$ = 0; }
-    | '{' stmts '}'                 { $$ = $2; }
-    | BREAK ';'                     { $$ = node(Break, 0, 0); }
-    | RETURN expr ';'               { $$ = node(Ret, $2, 0); }
-    | expr ';'                      { $$ = node(Expr, $1, 0); }
-    ;
+closed
+: simple
+| IF '(' expr ')' closed ELSE closed            { $$ = mkifelse($3, $5, $7); }
+| WHILE '(' expr ')' closed                     { $$ = node(While, $3, $5); }
+| FOR '(' expr_ ';' expr_ ';' expr_ ')' closed  { $$ = mkfor($3, $5, $7, $9); }
+;
 
-expr: pref
-    | expr '=' expr                 { $$ = node(OP_ASSIGN, $1, $3); }
-    | expr '+' expr                 { $$ = node(OP_ADD, $1, $3); }
-    | expr '-' expr                 { $$ = node(OP_SUB, $1, $3); }
-    | expr '*' expr                 { $$ = node(OP_MUL, $1, $3); }
-    | expr '/' expr                 { $$ = node(OP_DIV, $1, $3); }
-    | expr '%' expr                 { $$ = node(OP_REM, $1, $3); }
-    | expr '<' expr                 { $$ = node(OP_LT, $1, $3); }
-    | expr '>' expr                 { $$ = node(OP_LT, $3, $1); }
-    | expr LE_OP expr               { $$ = node(OP_LE, $1, $3); }
-    | expr GE_OP expr               { $$ = node(OP_LE, $3, $1); }
-    | expr EQ_OP expr               { $$ = node(OP_EQ, $1, $3); }
-    | expr NE_OP expr               { $$ = node(OP_NE, $1, $3); }
-    | expr AND_OP expr              { $$ = node(OP_AND, $1, $3); }
-    | expr OR_OP expr               { $$ = node(OP_OR, $1, $3); }
-    | expr '&' expr                 { $$ = node(OP_BAND, $1, $3); }
-    ;
+simple
+: ';'                               { $$ = 0; }
+| LINE_COMMENT_                     { $$ = 0; }
+| '{' stmts '}'                     { $$ = $2; }
+| BREAK ';'                         { $$ = node(Break, 0, 0); }
+| RETURN expr ';'                   { $$ = node(Ret, $2, 0); }
+| expr ';'                          { $$ = node(Expr, $1, 0); }
+;
 
-expr_: expr
-    |                               { $$ = 0; };
+expr
+: pref
+| expr '=' expr                     { $$ = node(OP_ASSIGN, $1, $3); }
+| expr '+' expr                     { $$ = node(OP_ADD, $1, $3); }
+| expr '-' expr                     { $$ = node(OP_SUB, $1, $3); }
+| expr '*' expr                     { $$ = node(OP_MUL, $1, $3); }
+| expr '/' expr                     { $$ = node(OP_DIV, $1, $3); }
+| expr '%' expr                     { $$ = node(OP_MOD, $1, $3); }
+| expr '<' expr                     { $$ = node(OP_LT, $1, $3); }
+| expr '>' expr                     { $$ = node(OP_LT, $3, $1); }
+| expr LE_OP expr                   { $$ = node(OP_LE, $1, $3); }
+| expr GE_OP expr                   { $$ = node(OP_LE, $3, $1); }
+| expr EQ_OP expr                   { $$ = node(OP_EQ, $1, $3); }
+| expr NE_OP expr                   { $$ = node(OP_NE, $1, $3); }
+| expr AND_OP expr                  { $$ = node(OP_AND, $1, $3); }
+| expr OR_OP expr                   { $$ = node(OP_OR, $1, $3); }
+| expr '&' expr                     { $$ = node(OP_BAND, $1, $3); }
+;
 
-pref: post
-    | '-' pref                      { $$ = mkneg($2); }
-    | '*' pref                      { $$ = node(OP_DEREF, $2, 0); }
-    | '&' pref                      { $$ = node(OP_ADDR, $2, 0); }
-    ;
+expr_
+: expr
+|                                   { $$ = 0; }
+;
 
-post: CONSTANT
-    | STRING_LITERAL
-    | IDENTIFIER
-    | SIZEOF '(' type ')'           { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($3); }
-    | '(' expr ')'                  { $$ = $2; }
-    | IDENTIFIER '(' args_ ')'      { $$ = node(OP_CALL, $1, $3); }
-    | post '[' expr ']'             { $$ = mkidx($1, $3); }
-    | post INC_OP                   { $$ = node(OP_INC, $1, 0); }
-    | post DEC_OP                   { $$ = node(OP_DEC, $1, 0); }
-    ;
+pref
+: post
+| '-' pref                          { $$ = mkneg($2); }
+| '*' pref                          { $$ = node(OP_DEREF, $2, 0); }
+| '&' pref                          { $$ = node(OP_ADDR, $2, 0); }
+;
 
-args_ : args
-    |                               { $$ = 0; };
+post
+: CONSTANT
+| STRING_LITERAL
+| IDENTIFIER
+| SIZEOF '(' type ')'               { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($3); }
+| '(' expr ')'                      { $$ = $2; }
+| IDENTIFIER '(' args_ ')'          { $$ = node(OP_CALL, $1, $3); }
+| post '[' expr ']'                 { $$ = mkidx($1, $3); }
+| post INC_OP                       { $$ = node(OP_INC, $1, 0); }
+| post DEC_OP                       { $$ = node(OP_DEC, $1, 0); }
+;
 
-args: expr                          { $$ = node(0, $1, 0); }
-    | expr ',' args                 { $$ = node(0, $1, $3); }
-    ;
+args_
+: args
+|                                   { $$ = 0; }
+;
+
+args
+: expr                              { $$ = node(0, $1, 0); }
+| expr ',' args                     { $$ = node(0, $1, $3); }
+;
 
 %%
 
@@ -971,20 +1095,41 @@ int yylex() {
         char *s;
         int t;
     } kwds[] = {
-            { "void", VOID },
-            { "char", CHAR },
-            { "short", SHORT },
-            { "int", INT },
-            { "long", LONG },
-            { "double", DOUBLE },
-            { "if", IF },
-            { "else", ELSE },
-            { "for", FOR },
-            { "while", WHILE },
-            { "return", RETURN },
-            { "break", BREAK },
-            { "sizeof", SIZEOF },
-            { 0, 0 }
+        { "void", VOID },
+        { "char", CHAR },
+        { "short", SHORT },
+        { "int", INT },
+        { "long", LONG },
+        { "float", FLOAT },
+        { "double", DOUBLE },
+        { "signed", SIGNED },
+        { "unsigned", UNSIGNED },
+        { "bool", BOOL },
+        { "complex", COMPLEX },
+        { "imaginary", IMAGINARY },
+
+        { "if", IF },
+        { "else", ELSE },
+        { "for", FOR },
+        { "do", DO },
+        { "while", WHILE },
+        { "switch", SWITCH },
+        { "case", CASE },
+        { "default", DEFAULT },
+        { "goto", GOTO },
+        { "continue", CONTINUE },
+        { "return", RETURN },
+        { "break", BREAK },
+
+        { "sizeof", SIZEOF },
+        { "typedef", TYPEDEF },
+        { "extern", EXTERN },
+        { "static", STATIC },
+        { "auto", AUTO },
+        { "register", REGISTER },
+        { "struct", STRUCT },
+        { "union", UNION },
+        { 0, 0 }
     };
     int i, c, c2, c3, n;
     char v[NString], *p;
@@ -1111,7 +1256,7 @@ int yylex() {
         strcpy(&p[i], "\", b 0 }");
         if (nglo == NGlo) die("too many globals");
         globals[nglo] = p;
-        yylval.n = node('S', 0, 0);
+        yylval.n = node(OP_FRED, 0, 0);
         yylval.n->s.u.n = nglo++;
         PP(lex, "%s ", &p[i]);
         return STRING_LITERAL;
@@ -1128,13 +1273,26 @@ int yylex() {
         case DI('-','-'): return DEC_OP;
         case DI('&','&'): return AND_OP;
         case DI('|','|'): return OR_OP;
-        case DI('+','='): return ADD_EQ;
-        case DI('-','='): return SUB_EQ;
+        case DI('*','='): return MUL_ASSIGN;
+        case DI('/','='): return DIV_ASSIGN;
+        case DI('%','='): return MOD_ASSIGN;
+        case DI('+','='): return ADD_ASSIGN;
+        case DI('-','='): return SUB_ASSIGN;
+        case DI('^','='): return XOR_ASSIGN;
+        case DI('|','='): return OR_ASSIGN;
         case DI('.','.'): {
             c3 = getchar();
-            if (c3 == '.') {
-                return ELLIPSIS;
-            }
+            if (c3 == '.') return ELLIPSIS;
+            ungetc(c3, stdin);
+        }
+        case DI('<','<'): {
+            c3 = getchar();
+            if (c3 == '=') return LEFT_ASSIGN;
+            ungetc(c3, stdin);
+        }
+        case DI('>','>'): {
+            c3 = getchar();
+            if (c3 == '=') return RIGHT_ASSIGN;
             ungetc(c3, stdin);
         }
     }
@@ -1298,10 +1456,10 @@ void ppCtype(unsigned long t) {
         case T_INT:
             fprintf(stderr, "int ");
             break;
-        case T_LNG:
+        case T_LONG:
             fprintf(stderr, "long ");
             break;
-        case T_DBL:
+        case T_DOUBLE:
             fprintf(stderr, "double ");
             break;
         case T_FUN:
