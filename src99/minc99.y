@@ -145,51 +145,89 @@ enum {
 	8                                               \
 )))
 
+#define _lvns 0
+#define _ac _lvns+30
+#define _lvse _ac+10
+#define _nvse _lvse+10
+#define _nvns _nvse+10
+#define _other _nvns+20
+
 enum op {
-    NAME = 86,
-    If = 128,
-    IfElse = 129,
-    Else = 130,
-    While = 131,
-    Expr = 132,
-    Break = 133,
-    Ret = 134,
-    Seq = 135,
-    Ptr = 136,
-    ADD_EQ = 137,
-    SUB_EQ = 138,
+
+    // local value with no direct side effect
+    Expr        = _lvns+1,
+
+    LIT_INT     = _lvns+2,
+    LIT_DEC     = _lvns+3,
+    LIT_STR     = _lvns+4,
+    LIT_BOOL    = _lvns+5,
+
+    OP_CALL     = _lvns+6,
+
+    OP_ADD      = _lvns+7,
+    OP_SUB      = _lvns+8,
+    OP_MUL      = _lvns+9,
+    OP_DIV      = _lvns+10,
+    OP_MOD      = _lvns+11,
+    OP_LSHIFT   = _lvns+12,
+    OP_RSHIFT   = _lvns+13,
+
+    OP_EQ       = _lvns+14,
+    OP_NE       = _lvns+15,
+    OP_LE       = _lvns+16,
+    OP_LT       = _lvns+17,
+
+    OP_AND      = _lvns+18,
+    OP_OR       = _lvns+19,
+    OP_NOT      = _lvns+20,
+
+    OP_BAND     = _lvns+21,
+    OP_BOR      = _lvns+22,
+    OP_BINV     = _lvns+23,
+    OP_BXOR     = _lvns+24,
+
+    OP_IIF      = _lvns+25,
+
+
+    // access
+    NAME        = _ac+1,
+    OP_ATTR     = _ac+2,       // e.g. x.name
+    OP_INDEX    = _ac+3,       // e.g. xs[0]
+    OP_ADDR     = _ac+4,
+    OP_DEREF    = _ac+5,
+
+
+    // local value with direct side effect
+    OP_INC      = _lvse+1,
+    OP_DEC      = _lvse+2,
+
+
+    // no local value with direct side effect
+    OP_ASSIGN   = _nvse+1,
+    OP_ADD_EQ   = _nvse+2,
+    OP_SUB_EQ   = _nvse+3,
+
+
+    // no local value with no direct side effect
+    Label       = _nvns+1,
+    If          = _nvns+2,
+    IfElse      = _nvns+3,
+    Else        = _nvns+4,
+    While       = _nvns+5,      // for is implemented in terms of while
+    Select      = _nvns+6,
+    Case        = _nvns+7,
+    Default     = _nvns+8,
+    Goto        = _nvns+9,
+    Continue    = _nvns+10,
+    Break       = _nvns+11,
+    Ret         = _nvns+12,
+    Seq         = _nvns+13,
+
+
+    // other
+    Ptr         =  _other+1,
 };
 
-#define OP_CALL 'C'
-#define OP_ASSIGN '='
-
-#define OP_EQ   'e'
-#define OP_NE   'n'
-#define OP_LE   'l'
-#define OP_LT   '<'
-#define OP_AND  'a'
-#define OP_OR   'o'
-#define OP_NOT  '!'
-
-#define OP_BAND '&'
-#define OP_BOR  '|'
-#define OP_BINV '~'
-#define OP_BXOR '^'
-
-#define OP_ADD  '+'
-#define OP_SUB  '-'
-#define OP_MUL  '*'
-#define OP_DIV  '/'
-#define OP_REM  '%'
-
-#define OP_DEREF '@'
-#define OP_ADDR  'A'
-
-#define OP_INC  'P'
-#define OP_DEC  'M'
-
-#define LIT_INT 'N'
-#define LIT_DEC 'D'
 
 
 #define GLOBAL  "$g"
@@ -301,6 +339,13 @@ Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s) {
         return node(Seq, s1, s2);
     else
         return s2;
+}
+
+
+Node * mkopassign(Node *op, Node *l, Node *r) {
+    op->l = l;
+    op->r = r;
+    return node(OP_ASSIGN, l, op);
 }
 
 
@@ -466,7 +511,7 @@ Symb emitexpr(Node *n) {
             [OP_SUB] = "sub",
             [OP_MUL] = "mul",
             [OP_DIV] = "div",
-            [OP_REM] = "rem",
+            [OP_MOD] = "rem",
             [OP_BAND] = "and",
             [OP_LT] = "cslt",  /* meeeeh, wrong for pointers! */
             [OP_LE] = "csle",
@@ -543,12 +588,6 @@ Symb emitexpr(Node *n) {
             sr = lval(n->l);
             sr.ctyp = IDIR(sr.ctyp);
             break;
-
-        case ADD_EQ:
-            die("+= NYI");
-
-        case SUB_EQ:
-            die("-= NYI");
 
         case OP_ASSIGN:
             s0 = emitexpr(n->r);
@@ -823,7 +862,16 @@ void declareGlobal(int t, Node *globalname) {
 
 
 %type <n> expression pointer unary_operator assignment_expression unary_expression assignment_operator cast_expression
-%type <n> type_name compound_statement declarator declaration_list
+%type <n> type_name compound_statement declarator declaration_list block_item_list declaration declaration_specifiers
+%type <n> primary_expression postfix_expression initializer_list designation initializer designator_list
+%type <n> multiplicative_expression cast_expression additive_expression shift_expression relational_expression
+%type <n> equality_expression and_expression exclusive_or_expression inclusive_or_expression logical_and_expression
+%type <n> logical_or_expression conditional_expression enumerator type_qualifier constant_expression designator
+%type <n> labeled_statement statement expression_statement selection_statement iteration_statement jump_statement
+%type <n> translation_unit
+%type <n> external_declaration
+
+
 
 %%
 
@@ -831,32 +879,32 @@ primary_expression
 : IDENTIFIER
 | CONSTANT
 | STRING_LITERAL
-| '(' expression ')'
+| '(' expression ')'                                    { $$ = $2;}
 ;
 
 postfix_expression
 : primary_expression
-| postfix_expression '[' expression ']'
-| postfix_expression '(' ')'
-| postfix_expression '(' argument_expression_list ')'
-| postfix_expression '.' IDENTIFIER
-| postfix_expression PTR_OP IDENTIFIER
-| postfix_expression INC_OP
-| postfix_expression DEC_OP
-| '(' type_name ')' '{' initializer_list '}'
-| '(' type_name ')' '{' initializer_list ',' '}'
+| postfix_expression '[' expression ']'                 { die("NYI line: %d", $%); }
+| postfix_expression '(' ')'                            { die("NYI line: %d", $%); }
+| postfix_expression '(' argument_expression_list ')'   { die("NYI line: %d", $%); }
+| postfix_expression '.' IDENTIFIER                     { die("NYI line: %d", $%); }
+| postfix_expression PTR_OP IDENTIFIER                  { die("NYI line: %d", $%); }
+| postfix_expression INC_OP                             { $$ = node(OP_INC, $1, 0); }
+| postfix_expression DEC_OP                             { $$ = node(OP_DEC, $1, 0); }
+| '(' type_name ')' '{' initializer_list '}'            { die("NYI line: %d", $%); }
+| '(' type_name ')' '{' initializer_list ',' '}'        { die("NYI line: %d", $%); }
 ;
 
 argument_expression_list
 : assignment_expression
-| argument_expression_list ',' assignment_expression
+| argument_expression_list ',' assignment_expression    { die("NYI line: %d", $%); }
 ;
 
 unary_expression
 : postfix_expression
-| INC_OP unary_expression                               { $$ = node(OP_INC, $2, 0); }
-| DEC_OP unary_expression                               { $$ = node(OP_DEC, $2, 0); }
-| unary_operator cast_expression                        { $$ = bindl($1, $2, __LINE__); }
+| INC_OP unary_expression                               { $$ = node(OP_INC, 0, $2); }
+| DEC_OP unary_expression                               { $$ = node(OP_DEC, 0, $2); }
+| unary_operator cast_expression                        { $$ = bindl($1, $2, $%); }
 | SIZEOF unary_expression                               { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($2); }
 | SIZEOF '(' type_name ')'                              { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($3); }
 ;
@@ -864,102 +912,103 @@ unary_expression
 unary_operator
 : '&'                                                   { $$ = node(OP_ADDR, 0, 0); }
 | '*'                                                   { $$ = node(OP_DEREF, 0, 0); }
-| '+'
-| '-'
+| '+'                                                   { die("NYI line: %d", $%); }
+| '-'                                                   { die("NYI line: %d", $%); }
 | '~'                                                   { $$ = node(OP_BINV, 0, 0); }
 | '!'                                                   { $$ = node(OP_NOT, 0, 0); }
 ;
 
 cast_expression
 : unary_expression
-| '(' type_name ')' cast_expression
+| '(' type_name ')' cast_expression                     { die("NYI line: %d", $%); }
 ;
 
 multiplicative_expression
 : cast_expression
-| multiplicative_expression '*' cast_expression
-| multiplicative_expression '/' cast_expression
-| multiplicative_expression '%' cast_expression
+| multiplicative_expression '*' cast_expression         { $$ = node(OP_MUL, $1, $3); }
+| multiplicative_expression '/' cast_expression         { $$ = node(OP_DIV, $1, $3); }
+| multiplicative_expression '%' cast_expression         { $$ = node(OP_MOD, $1, $3); }
 ;
 
 additive_expression
 : multiplicative_expression
-| additive_expression '+' multiplicative_expression
-| additive_expression '-' multiplicative_expression
+| additive_expression '+' multiplicative_expression     { $$ = node(OP_ADD, $1, $3); }
+| additive_expression '-' multiplicative_expression     { $$ = node(OP_SUB, $1, $3); }
 ;
 
 shift_expression
 : additive_expression
-| shift_expression LEFT_OP additive_expression
-| shift_expression RIGHT_OP additive_expression
+| shift_expression LEFT_OP additive_expression          { $$ = node(OP_LSHIFT, $1, $3); }
+| shift_expression RIGHT_OP additive_expression         { $$ = node(OP_RSHIFT, $1, $3); }
 ;
 
 relational_expression
 : shift_expression
-| relational_expression '<' shift_expression
-| relational_expression '>' shift_expression
-| relational_expression LE_OP shift_expression
-| relational_expression GE_OP shift_expression
+| relational_expression '<' shift_expression            { $$ = node(OP_LT, $1, $3); }
+| relational_expression '>' shift_expression            { $$ = node(OP_LT, $3, $1); }
+| relational_expression LE_OP shift_expression          { $$ = node(OP_LE, $1, $3); }
+| relational_expression GE_OP shift_expression          { $$ = node(OP_LE, $3, $1); }
 ;
 
 equality_expression
 : relational_expression
-| equality_expression EQ_OP relational_expression
-| equality_expression NE_OP relational_expression
+| equality_expression EQ_OP relational_expression       { $$ = node(OP_EQ, $1, $3); }
+| equality_expression NE_OP relational_expression       { $$ = node(OP_NE, $1, $3); }
 ;
 
 and_expression
 : equality_expression
-| and_expression '&' equality_expression
+| and_expression '&' equality_expression                { $$ = node(OP_BAND, $1, $3); }
 ;
 
 exclusive_or_expression
 : and_expression
-| exclusive_or_expression '^' and_expression
+| exclusive_or_expression '^' and_expression            { $$ = node(OP_BXOR, $1, $3); }
 ;
 
 inclusive_or_expression
 : exclusive_or_expression
-| inclusive_or_expression '|' exclusive_or_expression
+| inclusive_or_expression '|' exclusive_or_expression   { $$ = node(OP_ADD, $1, $3); }
 ;
 
 logical_and_expression
 : inclusive_or_expression
-| logical_and_expression AND_OP inclusive_or_expression
+| logical_and_expression AND_OP inclusive_or_expression { $$ = node(OP_ADD, $1, $3); }
 ;
 
 logical_or_expression
 : logical_and_expression
-| logical_or_expression OR_OP logical_and_expression
+| logical_or_expression OR_OP logical_and_expression    { $$ = node(OP_ADD, $1, $3); }
 ;
 
 conditional_expression
 : logical_or_expression
-| logical_or_expression '?' expression ':' conditional_expression
+| logical_or_expression '?' expression ':' conditional_expression     { die("? : NYI"); }
 ;
 
 assignment_expression
 : conditional_expression
-| unary_expression assignment_operator assignment_expression    { $$ = bindlr($2, $1, $3, __LINE__); }
+| unary_expression assignment_operator assignment_expression    { $$ = mkopassign($2, $1, $3); }
 ;
+
 
 assignment_operator
 : '='                                                   { $$ = node(OP_ASSIGN, 0, 0); }
-| MUL_ASSIGN
-| DIV_ASSIGN
-| MOD_ASSIGN
-| ADD_ASSIGN                                            { $$ = node(ADD_EQ, 0, 0); }
-| SUB_ASSIGN                                            { $$ = node(SUB_EQ, 0, 0); }
-| LEFT_ASSIGN
-| RIGHT_ASSIGN
-| AND_ASSIGN
-| XOR_ASSIGN
-| OR_ASSIGN
+| MUL_ASSIGN                                            { $$ = node(OP_MUL, 0, 0); }
+| DIV_ASSIGN                                            { $$ = node(OP_DIV, 0, 0); }
+| MOD_ASSIGN                                            { $$ = node(OP_MOD, 0, 0); }
+| ADD_ASSIGN                                            { $$ = node(OP_ADD, 0, 0); }
+| SUB_ASSIGN                                            { $$ = node(OP_SUB, 0, 0); }
+| LEFT_ASSIGN                                           { $$ = node(OP_LSHIFT, 0, 0); }
+| RIGHT_ASSIGN                                          { $$ = node(OP_RSHIFT, 0, 0); }
+| AND_ASSIGN                                            { $$ = node(OP_BAND, 0, 0); }
+| XOR_ASSIGN                                            { $$ = node(OP_BXOR, 0, 0); }
+| OR_ASSIGN                                             { $$ = node(OP_BOR, 0, 0); }
 ;
 
 expression
 : assignment_expression
-| expression ',' assignment_expression
+| expression ',' assignment_expression                  { die("NYI line: %d", $%); }
 ;
 
 constant_expression
@@ -967,29 +1016,29 @@ constant_expression
 ;
 
 declaration
-: declaration_specifiers ';'
-| declaration_specifiers init_declarator_list ';'
+: declaration_specifiers ';'                            { $$ = $1; }
+| declaration_specifiers init_declarator_list ';'       { die("NYI line: %d", $%); }
 ;
 
 declaration_specifiers
 : storage_class_specifier
-| storage_class_specifier declaration_specifiers
+| storage_class_specifier declaration_specifiers        { die("NYI line: %d", $%); }
 | type_specifier
-| type_specifier declaration_specifiers
+| type_specifier declaration_specifiers                 { die("NYI line: %d", $%); }
 | type_qualifier
-| type_qualifier declaration_specifiers
+| type_qualifier declaration_specifiers                 { die("NYI line: %d", $%); }
 | function_specifier
-| function_specifier declaration_specifiers
+| function_specifier declaration_specifiers             { die("NYI line: %d", $%); }
 ;
 
 init_declarator_list
 : init_declarator
-| init_declarator_list ',' init_declarator
+| init_declarator_list ',' init_declarator              { die("NYI line: %d", $%); }
 ;
 
 init_declarator
 : declarator
-| declarator '=' initializer
+| declarator '=' initializer                            { die("NYI line: %d", $%); }
 ;
 
 storage_class_specifier
@@ -1001,13 +1050,13 @@ storage_class_specifier
 ;
 
 type_specifier
-: VOID                                                      { $<u>$ = T_VOID; }
-| CHAR                                                      { $<u>$ = T_CHR; }
+: VOID                                                  { $<u>$ = T_VOID; }
+| CHAR                                                  { $<u>$ = T_CHR; }
 | SHORT
-| INT                                                       { $<u>$ = T_INT; }
+| INT                                                   { $<u>$ = T_INT; }
 | LONG
 | FLOAT
-| DOUBLE                                                    { $<u>$ = T_DBL; }
+| DOUBLE                                                { $<u>$ = T_DBL; }
 | SIGNED
 | UNSIGNED
 | BOOL
@@ -1019,9 +1068,9 @@ type_specifier
 ;
 
 struct_or_union_specifier
-: struct_or_union IDENTIFIER '{' struct_declaration_list '}'
-| struct_or_union '{' struct_declaration_list '}'
-| struct_or_union IDENTIFIER
+: struct_or_union IDENTIFIER '{' struct_declaration_list '}'    { die("NYI line: %d", $%); }
+| struct_or_union '{' struct_declaration_list '}'               { die("NYI line: %d", $%); }
+| struct_or_union IDENTIFIER                                    { die("NYI line: %d", $%); }
 ;
 
 struct_or_union
@@ -1031,166 +1080,165 @@ struct_or_union
 
 struct_declaration_list
 : struct_declaration
-| struct_declaration_list struct_declaration
+| struct_declaration_list struct_declaration            { die("NYI line: %d", $%); }
 ;
 
 struct_declaration
-: specifier_qualifier_list struct_declarator_list ';'
+: specifier_qualifier_list struct_declarator_list ';'   { die("NYI line: %d", $%); }
 ;
 
 specifier_qualifier_list
-: type_specifier specifier_qualifier_list
+: type_specifier specifier_qualifier_list               { die("NYI line: %d", $%); }
 | type_specifier
-| type_qualifier specifier_qualifier_list
+| type_qualifier specifier_qualifier_list               { die("NYI line: %d", $%); }
 | type_qualifier
 ;
 
 struct_declarator_list
 : struct_declarator
-| struct_declarator_list ',' struct_declarator
+| struct_declarator_list ',' struct_declarator          { die("NYI line: %d", $%); }
 ;
 
 struct_declarator
 : declarator
-| ':' constant_expression
-| declarator ':' constant_expression
+| ':' constant_expression                               { die("NYI line: %d", $%); }
+| declarator ':' constant_expression                    { die("NYI line: %d", $%); }
 ;
 
 enum_specifier
-: ENUM '{' enumerator_list '}'
-| ENUM IDENTIFIER '{' enumerator_list '}'
-| ENUM '{' enumerator_list ',' '}'
-| ENUM IDENTIFIER '{' enumerator_list ',' '}'
+: ENUM '{' enumerator_list '}'                          { die("NYI line: %d", $%); }
+| ENUM IDENTIFIER '{' enumerator_list '}'               { die("NYI line: %d", $%); }
+| ENUM '{' enumerator_list ',' '}'                      { die("NYI line: %d", $%); }
+| ENUM IDENTIFIER '{' enumerator_list ',' '}'           { die("NYI line: %d", $%); }
 | ENUM IDENTIFIER
 ;
 
 enumerator_list
 : enumerator
-| enumerator_list ',' enumerator
+| enumerator_list ',' enumerator                        { die("NYI line: %d", $%); }
 ;
 
 enumerator
-: IDENTIFIER
-| IDENTIFIER '=' constant_expression
+: IDENTIFIER                                            { $$ = node(NAME, $1, 0); }
+| IDENTIFIER '=' constant_expression                    { $$ = node(OP_ASSIGN, $1, $3); }
 ;
 
 type_qualifier
-: CONST
-| RESTRICT
-| VOLATILE
+: CONST                                                 { die("CONST NYI"); }
+| RESTRICT                                              { die("RESTRICT NYI"); }
+| VOLATILE                                              { die("VOLATILE NYI"); }
 ;
 
 function_specifier
-: INLINE
+: INLINE                                                { die("INLINE NYI"); }
 ;
 
 declarator
-: pointer direct_declarator
+: pointer direct_declarator                             { die("NYI line: %d", $%); }
 | direct_declarator
 ;
 
 
 direct_declarator
 : IDENTIFIER
-| '(' declarator ')'
-| direct_declarator '[' type_qualifier_list assignment_expression ']'
-| direct_declarator '[' type_qualifier_list ']'
-| direct_declarator '[' assignment_expression ']'
-| direct_declarator '[' STATIC type_qualifier_list assignment_expression ']'
-| direct_declarator '[' type_qualifier_list STATIC assignment_expression ']'
-| direct_declarator '[' type_qualifier_list '*' ']'
-| direct_declarator '[' '*' ']'
-| direct_declarator '[' ']'
-| direct_declarator '(' parameter_type_list ')'
-| direct_declarator '(' identifier_list ')'
-| direct_declarator '(' ')'
+| '(' declarator ')'                                                            { die("NYI line: %d", $%); }
+| direct_declarator '[' type_qualifier_list assignment_expression ']'           { die("NYI line: %d", $%); }
+| direct_declarator '[' type_qualifier_list ']'                                 { die("NYI line: %d", $%); }
+| direct_declarator '[' assignment_expression ']'                               { die("NYI line: %d", $%); }
+| direct_declarator '[' STATIC type_qualifier_list assignment_expression ']'    { die("NYI line: %d", $%); }
+| direct_declarator '[' type_qualifier_list STATIC assignment_expression ']'    { die("NYI line: %d", $%); }
+| direct_declarator '[' type_qualifier_list '*' ']'                             { die("NYI line: %d", $%); }
+| direct_declarator '[' '*' ']'                                                 { die("NYI line: %d", $%); }
+| direct_declarator '[' ']'                                                     { die("NYI line: %d", $%); }
+| direct_declarator '(' parameter_type_list ')'                                 { die("NYI line: %d", $%); }
+| direct_declarator '(' identifier_list ')'                                     { die("NYI line: %d", $%); }
+| direct_declarator '(' ')'                                                     { die("NYI line: %d", $%); }
 ;
 
 pointer                                                 
-: '*'
-| '*' type_qualifier_list
-| '*' pointer                                           { //$<n>$ = IDIR($2);
-    }
-| '*' type_qualifier_list pointer
+: '*'                                                   { die("* NYI"); }
+| '*' type_qualifier_list                               { die("* type_qualifier_list NYI"); }
+| '*' pointer                                           { die("* pointer NYI"); }
+| '*' type_qualifier_list pointer                       { die("* type_qualifier_list pointer NYI"); }
 ;
 
 type_qualifier_list
 : type_qualifier
-| type_qualifier_list type_qualifier
+| type_qualifier_list type_qualifier                    { die("NYI line: %d", $%); }
 ;
 
 
 parameter_type_list
 : parameter_list
-| parameter_list ',' ELLIPSIS
+| parameter_list ',' ELLIPSIS                           { die("NYI line: %d", $%); }
 ;
 
 parameter_list
 : parameter_declaration
-| parameter_list ',' parameter_declaration
+| parameter_list ',' parameter_declaration              { die("NYI line: %d", $%); }
 ;
 
 parameter_declaration
-: declaration_specifiers declarator
-| declaration_specifiers abstract_declarator
+: declaration_specifiers declarator                     { die("NYI line: %d", $%); }
+| declaration_specifiers abstract_declarator            { die("NYI line: %d", $%); }
 | declaration_specifiers
 ;
 
 identifier_list
 : IDENTIFIER
-| identifier_list ',' IDENTIFIER
+| identifier_list ',' IDENTIFIER                        { die("NYI line: %d", $%); }
 ;
 
 type_name
 : specifier_qualifier_list
-| specifier_qualifier_list abstract_declarator
+| specifier_qualifier_list abstract_declarator          { die("NYI line: %d", $%); }
 ;
 
 abstract_declarator
 : pointer
 | direct_abstract_declarator
-| pointer direct_abstract_declarator
+| pointer direct_abstract_declarator                    { die("NYI line: %d", $%); }
 ;
 
 direct_abstract_declarator
-: '(' abstract_declarator ')'
-| '[' ']'
-| '[' assignment_expression ']'
-| direct_abstract_declarator '[' ']'
-| direct_abstract_declarator '[' assignment_expression ']'
-| '[' '*' ']'
-| direct_abstract_declarator '[' '*' ']'
-| '(' ')'
-| '(' parameter_type_list ')'
-| direct_abstract_declarator '(' ')'
-| direct_abstract_declarator '(' parameter_type_list ')'
+: '(' abstract_declarator ')'                               { die("NYI line: %d", $%); }
+| '[' ']'                                                   { die("NYI line: %d", $%); }
+| '[' assignment_expression ']'                             { die("NYI line: %d", $%); }
+| direct_abstract_declarator '[' ']'                        { die("NYI line: %d", $%); }
+| direct_abstract_declarator '[' assignment_expression ']'  { die("NYI line: %d", $%); }
+| '[' '*' ']'                                               { die("NYI line: %d", $%); }
+| direct_abstract_declarator '[' '*' ']'                    { die("NYI line: %d", $%); }
+| '(' ')'                                                   { die("NYI line: %d", $%); }
+| '(' parameter_type_list ')'                               { die("NYI line: %d", $%); }
+| direct_abstract_declarator '(' ')'                        { die("NYI line: %d", $%); }
+| direct_abstract_declarator '(' parameter_type_list ')'    { die("NYI line: %d", $%); }
 ;
 
 initializer
 : assignment_expression
-| '{' initializer_list '}'
-| '{' initializer_list ',' '}'
+| '{' initializer_list '}'                              { die("NYI line: %d", $%); }
+| '{' initializer_list ',' '}'                          { die("NYI line: %d", $%); }
 ;
 
 initializer_list
 : initializer
-| designation initializer
-| initializer_list ',' initializer
-| initializer_list ',' designation initializer
+| designation initializer                               { $$ = bindr($1, $2, $%); }
+| initializer_list ',' initializer                      { die("NYI line: %d", $%); }
+| initializer_list ',' designation initializer          { die("NYI line: %d", $%); }
 ;
 
 designation
-: designator_list '='
+: designator_list '='                                   { $$ = node(OP_ASSIGN, $1, 0); }
 ;
 
 designator_list
 : designator
-| designator_list designator
+| designator_list designator                            { die("NYI line: %d", $%); }
 ;
 
 designator
-: '[' constant_expression ']'
-| '.' IDENTIFIER
+: '[' constant_expression ']'                           { $$ = node(OP_INDEX, 0, $2); }
+| '.' IDENTIFIER                                        { $$ = node(OP_ATTR, 0, $2); }
 ;
 
 statement
@@ -1203,19 +1251,19 @@ statement
 ;
 
 labeled_statement
-: IDENTIFIER ':' statement
-| CASE constant_expression ':' statement
-| DEFAULT ':' statement
+: IDENTIFIER ':' statement                              { $$ = node(Label, $1, $3); }
+| CASE constant_expression ':' statement                { $$ = node(Case, $2, $4); }
+| DEFAULT ':' statement                                 { $$ = node(Default, $3, 0); }
 ;
 
 compound_statement
-: '{' '}'
-| '{' block_item_list '}'
+: '{' '}'                                               { $$ = 0; }
+| '{' block_item_list '}'                               { $$ = $2; }
 ;
 
 block_item_list
 : block_item
-| block_item_list block_item
+| block_item_list block_item                            { die("NYI line: %d", $%); }
 ;
 
 block_item
@@ -1225,37 +1273,37 @@ block_item
 
 expression_statement
 : ';'
-| expression ';'
+| expression ';'                                        { $$ = $1; }
 ;
 
 selection_statement
-: IF '(' expression ')' statement
-| IF '(' expression ')' statement ELSE statement
-| SWITCH '(' expression ')' statement
+: IF '(' expression ')' statement                       { $<n>$ = node(If, $3, $5); }
+| IF '(' expression ')' statement ELSE statement        { $<n>$ = mkifelse($3, $5, $7); }
+| SWITCH '(' expression ')' statement                   { die("SWITCH NYI"); }
 ;
 
 iteration_statement
-: WHILE '(' expression ')' statement
-| DO statement WHILE '(' expression ')' ';'
-| FOR '(' expression_statement expression_statement ')' statement
+: WHILE '(' expression ')' statement                                    { die("NYI line: %d", $%); }
+| DO statement WHILE '(' expression ')' ';'                             { die("NYI line: %d", $%); }
+| FOR '(' expression_statement expression_statement ')' statement       { die("NYI line: %d", $%); }
 | FOR '(' expression_statement
     expression_statement expression ')'
-    statement
-| FOR '(' declaration expression_statement ')' statement
-| FOR '(' declaration expression_statement expression ')' statement
+    statement                                                           { die("NYI line: %d", $%); }
+| FOR '(' declaration expression_statement ')' statement                { die("NYI line: %d", $%); }
+| FOR '(' declaration expression_statement expression ')' statement     { die("NYI line: %d", $%); }
 ;
 
 jump_statement
-: GOTO IDENTIFIER ';'
-| CONTINUE ';'
-| BREAK ';'
-| RETURN ';'
-| RETURN expression ';'                                     { $<n>$ = node(Ret, $2, 0); }
+: GOTO IDENTIFIER ';'                                   { $$ = node(Goto, $2, 0); }
+| CONTINUE ';'                                          { $$ = node(Continue, 0, 0); }
+| BREAK ';'                                             { $$ = node(Break, 0, 0); }
+| RETURN ';'                                            { $$ = node(Ret, 0, 0); }
+| RETURN expression ';'                                 { $$ = node(Ret, $2, 0); }
 ;
 
 translation_unit
 : external_declaration
-| translation_unit external_declaration
+| translation_unit external_declaration                 { die("NYI line: %d", $%); }
 ;
 
 external_declaration
@@ -1270,7 +1318,7 @@ function_definition
 
 declaration_list
 : declaration
-| declaration_list declaration
+| declaration_list declaration                          { $$ = node(Seq, $1, $2); }
 ;
 
 
@@ -1442,13 +1490,26 @@ int yylex() {
         case DI('-','-'): return DEC_OP;
         case DI('&','&'): return AND_OP;
         case DI('|','|'): return OR_OP;
-        case DI('+','='): return ADD_EQ;
-        case DI('-','='): return SUB_EQ;
+        case DI('*','='): return MUL_ASSIGN;
+        case DI('/','='): return DIV_ASSIGN;
+        case DI('%','='): return MOD_ASSIGN;
+        case DI('+','='): return ADD_ASSIGN;
+        case DI('-','='): return SUB_ASSIGN;
+        case DI('^','='): return XOR_ASSIGN;
+        case DI('|','='): return OR_ASSIGN;
         case DI('.','.'): {
             c3 = getchar();
-            if (c3 == '.') {
-                return ELLIPSIS;
-            }
+            if (c3 == '.') return ELLIPSIS;
+            ungetc(c3, stdin);
+        }
+        case DI('<','<'): {
+            c3 = getchar();
+            if (c3 == '=') return LEFT_ASSIGN;
+            ungetc(c3, stdin);
+        }
+        case DI('>','>'): {
+            c3 = getchar();
+            if (c3 == '=') return RIGHT_ASSIGN;
             ungetc(c3, stdin);
         }
     }
