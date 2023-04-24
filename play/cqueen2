@@ -9,4 +9,4 @@ rm -f $SRC_HOME/queen2.p
 rm -f $SRC_HOME/queen2.q
 rm -f $SRC_HOME/queen2.s
 
-../mcc -I $SRC_HOME/../include $SRC_HOME/queen2.c
+../mcc99 -I $SRC_HOME/../include $SRC_HOME/queen2.c

@@ -49,7 +49,7 @@
 
  *** NAMING CONVENTION ***
 
- TOKEN            (including T_TYPENAME_)
+ TOKEN            (including T_TYPENAM E_)
  OP_OPERATION     (e.g. OP_ADD, except NAME, LIT_INT, LIT_DEC, LIT_STR)
  T_TYPE
 

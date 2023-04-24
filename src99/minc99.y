@@ -72,187 +72,18 @@
 /*Beginning of C declarations*/
 
 
-
-// minc
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
-enum {
-    lex = 1,
-    parse = 2,
-    emit =4,
-    info = 8,
-    error = 16,
-};
+#include "minc.h"
 
-enum {
-    NString = 32,
-    NGlo = 256,
-    NVar = 512,
-    NStr = 256,
-};
 
-typedef struct VarEntry {
-    char v[NString];
-    unsigned ctyp;
-    int glo;
-} VarEntry;
-
-#define SEED_START 1
-
-int gLevel;
-FILE *of;
-int line, nglo;
-int lbl = 0;            // seed for labels
-int tmp = SEED_START;            // seed for temporary variables in a function
-char *globals[NGlo];
-VarEntry varh[NVar];
-char srcFfn[1000];     // should be long enough for a filename
 
 int yylex(void);
 void yyerror(char const *);
-
-unsigned hash(char *s);
-void * alloc(size_t s);
-void die(char *s, ...);
-void varclr();
-void varadd(char *v, int glo, unsigned ctyp);
-void PP(int level, char *msg, ...);
-void putq(char *src, ...);
-
-
-
-// C and QBE IR
-
-#define _lvns 0
-#define _ac _lvns+30
-#define _lvse _ac+10
-#define _nvse _lvse+10
-#define _nvns _nvse+10
-#define _o _nvns+20
-#define _pt 255
-
-enum op {
-
-    // local value with no direct side effect
-    Expr        = _lvns+1,
-
-    LIT_INT     = _lvns+2,
-    LIT_DEC     = _lvns+3,
-    LIT_STR     = _lvns+4,
-    LIT_BOOL    = _lvns+5,
-
-    OP_CALL     = _lvns+6,
-
-    OP_ADD      = _lvns+7,
-    OP_SUB      = _lvns+8,
-    OP_MUL      = _lvns+9,
-    OP_DIV      = _lvns+10,
-    OP_MOD      = _lvns+11,
-    OP_LSHIFT   = _lvns+12,
-    OP_RSHIFT   = _lvns+13,
-
-    OP_EQ       = _lvns+14,
-    OP_NE       = _lvns+15,
-    OP_LE       = _lvns+16,
-    OP_LT       = _lvns+17,
-
-    OP_AND      = _lvns+18,
-    OP_OR       = _lvns+19,
-    OP_NOT      = _lvns+20,
-
-    OP_BAND     = _lvns+21,
-    OP_BOR      = _lvns+22,
-    OP_BINV     = _lvns+23,
-    OP_BXOR     = _lvns+24,
-
-    OP_IIF      = _lvns+25,
-
-    OP_FRED     = _lvns+26,
-
-
-    // access
-    NAME        = _ac+1,
-    OP_ATTR     = _ac+2,       // e.g. x.name
-    OP_INDEX    = _ac+3,       // e.g. xs[0]
-    OP_ADDR     = _ac+4,
-    OP_DEREF    = _ac+5,
-
-
-    // local value with direct side effect
-    OP_INC      = _lvse+1,
-    OP_DEC      = _lvse+2,
-
-
-    // no local value with direct side effect
-    OP_ASSIGN   = _nvse+1,
-    OP_ADD_EQ   = _nvse+2,
-    OP_SUB_EQ   = _nvse+3,
-
-
-    // no local value with no direct side effect
-    Label       = _nvns+1,
-    If          = _nvns+2,
-    IfElse      = _nvns+3,
-    Else        = _nvns+4,
-    While       = _nvns+5,      // for is implemented in terms of while
-    Select      = _nvns+6,
-    Case        = _nvns+7,
-    Default     = _nvns+8,
-    Goto        = _nvns+9,
-    Continue    = _nvns+10,
-    Break       = _nvns+11,
-    Ret         = _nvns+12,
-    Seq         = _nvns+13,
-    Do          = _nvns+14,
-
-
-    // other
-    Type        = _o+1,
-    T_TYPEDEF   = _o+2,
-    T_EXTERN    = _o+3,
-    T_STATIC    = _o+4,
-    T_AUTO      = _o+5,
-    T_REGISTER  = _o+6,
-    T_STRUCT    = _o+7,
-    T_UNION     = _o+8,
-
-    T_CONST     = _o+9,
-    T_RESTRICT  = _o+10,
-    T_VOLATILE  = _o+11,
-    T_INLINE    = _o+12,
-
-    T_VOID      = _o+13,
-    T_CHAR      = _o+14,
-    T_SHORT     = _o+15,
-    T_INT       = _o+16,
-    T_LONG      = _o+17,
-    T_FLOAT     = _o+18,
-    T_DOUBLE    = _o+19,
-    T_SIGNED    = _o+20,
-    T_UNSIGNED  = _o+21,
-    T_BOOL      = _o+22,
-    T_COMPLEX   = _o+23,
-    T_IMAGINARY = _o+24,
-
-    T_PTR       = _o+25,
-    T_FUN       = _o+26,
-
-};
-
-#define IDIR(x) (((x) << 8) + T_PTR)
-#define FUNC(x) (((x) << 8) + T_FUN)
-#define DREF(x) ((x) >> 8)
-#define KIND(x) ((x) & 255)
-#define SIZE(x) (                                   \
-    x == T_VOID ? (die("void has no size"), 0) : (  \
-	x == T_INT ? 4 : (                              \
-	8                                               \
-)))
 
 
 
@@ -263,128 +94,91 @@ enum op {
 
 
 
-typedef struct Symb {
-    enum {
-        Con,
-        Tmp,
-        Var,
-        Glo,
-    } t;                    // 4
-    union {
-        int n;
-        char v[NString];
-        double d;
-    } u;                    // 4 | 32 | 8 = 32
-    unsigned long ctyp;     // 8
-} Symb;
-
-
-typedef struct Node Node;
-struct Node {               // 64 bytes
-    int op;                 // 4
-    Symb s;                 // 4 + 32 + 8
-    Node *l, *r;            // 8 + 8
-};
-Node * node(int op, Node *l, Node *r);
-Node * bindl(Node *n, Node *l, int lineno);
-Node * bindr(Node *n, Node *r, int lineno);
-Node * bindlr(Node *n, Node *l, Node *r, int lineno);
-
-
-
-// OPEN: remove this by changing the logic that needed this to using node
-typedef struct TLLHead TLLHead;
-struct TLLHead {
-    int t;
-    TLLHead *r;
-};
-TLLHead * newTLLHead(int t, TLLHead *other);
-
-
-
 Symb emitexpr(Node *);
 Symb lval(Node *);
 void emitboolop(Node *, int, int);
-Symb * varget(char *v);
-void ppCtype(unsigned long t);
+void emitLocalDecl(int t, Node *varname);
 
-
-// parse tree construction
-enum {
-    pt_direct_declarator = _pt+1,
-};
 
 
 // Node construction
 
-Node * mkidx(Node *a, Node *i) {
-    Node *n = node(OP_ADD, a, i);
-    n = node(OP_DEREF, n, 0);
+Node * parsePointer(Node * n) { die("parsePointer nyi"); return 0; }
+
+
+Node * mkidx(Node *a, Node *i, int lineno) {
+    Node *n = node(OP_ADD, a, i, lineno);
+    n = node(OP_DEREF, n, 0, lineno);
     return n;
 }
 
 
-Node * mkneg(Node *n) {
+Node * mkneg(Node *n, int lineno) {
     static Node *z;
     if (!z) {
-        z = node(LIT_INT, 0, 0);
+        z = node(LIT_INT, 0, 0, lineno);
         z->s.u.n = 0;
     }
-    return node(OP_SUB, z, n);
+    return node(OP_SUB, z, n, lineno);
 }
 
 
-Node * mkparam(char *v, unsigned ctyp, Node *others) {
+Node * mkparam(char *v, unsigned ctyp, Node *others, int lineno) {
     if (ctyp == T_VOID) die("invalid void declaration");
-    Node *n = node(0, 0, others);
+    Node *n = node(0, 0, others, lineno);
     varadd(v, 0, ctyp);
     strcpy(n->s.u.v, v);
     return n;
 }
 
-Node * c99_mkparam(Node *ds, Node *d) {
+
+Node * c99_mkparam(Node *ds, Node *d, int lineno) {
     // declaration_specifiers declarator
-    return mkparam(d->s.u.v, ds->s.ctyp, 0);
-}
-
-Node * mkifelse(void *c, Node *t, Node *f) {
-    return node(IfElse, c, node(Else, t, f));
+    return mkparam(d->s.u.v, ds->s.ctyp, 0, lineno);
 }
 
 
-Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s) {
+Node * mkifelse(void *c, Node *t, Node *f, int lineno) {
+    return node(IfElse, c, node(Else, t, f, lineno), lineno);
+}
+
+
+Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s, int lineno) {
     Node *s1, *s2;
 
     if (ini)
-        s1 = node(Expr, ini, 0);
+        s1 = node(Expr, ini, 0, lineno);
     else
         s1 = 0;
     if (inc) {
-        s2 = node(Expr, inc, 0);
-        s2 = node(Seq, s, s2);
+        s2 = node(Expr, inc, 0, lineno);
+        s2 = node(Seq, s, s2, lineno);
     } else
         s2 = s;
     if (!tst) {
-        tst = node(LIT_INT, 0, 0);
+        tst = node(LIT_INT, 0, 0, lineno);
         tst->s.u.n = 1;
     }
-    s2 = node(While, tst, s2);
+    s2 = node(While, tst, s2, lineno);
     if (s1)
-        return node(Seq, s1, s2);
+        return node(Seq, s1, s2, lineno);
     else
         return s2;
 }
 
 
-Node * mkopassign(Node *op, Node *l, Node *r) {
-    op->l = l;
-    op->r = r;
-    return node(OP_ASSIGN, l, op);
+Node * mkopassign(Node *n, Node *l, Node *r, int lineno) {
+    PP(parse, "mkopassign %d:%s\n", n->op, optopp[n->op]);
+    if (n->l != 0) die("n->l != 0 @ %d", __LINE__);
+    if (n->r != 0) die("n->r != 0 @ %d", __LINE__);
+    n->l = l;
+    n->r = r;
+    return node(OP_ASSIGN, l, n, lineno);
 }
 
 
-Node * mktype(int t) {
-    Node * n = node(Type, 0, 0);
+Node * mktype(int t, int lineno) {
+    Node * n = node(Type, 0, 0, lineno);
     n->s.ctyp = t;
     return n;
 }
@@ -398,7 +192,7 @@ void emitsymb(Symb s) {
         case Tmp:
             putq(TEMP "%d", s.u.n);
             break;
-        case Var:
+        case Loc:
             putq(LOCAL "%s", s.u.v);
             break;
         case Glo:
@@ -431,7 +225,7 @@ void l_extsw(Symb *s) {
     putq("\n");
     s->t = Tmp;
     s->ctyp = T_LONG;
-    s->u.n = tmp++;
+    s->u.n = reserveTmp();
 }
 
 
@@ -441,7 +235,7 @@ void d_swtof(Symb *s) {
     putq("\n");
     s->t = Tmp;
     s->ctyp = T_DOUBLE;
-    s->u.n = tmp++;
+    s->u.n = reserveTmp();
 }
 
 
@@ -451,7 +245,7 @@ void d_sltof(Symb *s) {
     putq("\n");
     s->t = Tmp;
     s->ctyp = T_DOUBLE;
-    s->u.n = tmp++;
+    s->u.n = reserveTmp();
 }
 
 
@@ -508,7 +302,7 @@ Scale:
         putq("\t" TEMP "%d =l mul %d, ", tmp, sz);
         emitsymb(*r);
         putq("\n");
-        r->u.n = tmp++;
+        r->u.n = reserveTmp();
     }
     return l->ctyp;
 }
@@ -545,15 +339,11 @@ void emitcall(Node *n, Symb *sr) {
     putq("...)\n");
 }
 
-static const char neltl[] = {
-        OP_NE,
-        OP_EQ,
-        OP_LT,
-        OP_LE,
-};
+
 
 
 Symb emitexpr(Node *n) {
+    static const char neltl[] = {OP_NE, OP_EQ, OP_LT, OP_LE, };
     static char *otoa[] = {
             [OP_ADD] = "add",
             [OP_SUB] = "sub",
@@ -571,7 +361,7 @@ Symb emitexpr(Node *n) {
     char ty[2];
 
     sr.t = Tmp;
-    sr.u.n = tmp++;
+    sr.u.n = reserveTmp();
 
     switch (n->op) {
 
@@ -582,8 +372,7 @@ Symb emitexpr(Node *n) {
             die("|| NYI");
 
         case OP_AND:
-            l = lbl;
-            lbl += 3;
+            l = reserve(3);
             emitboolop(n, l, l+1);
             putq(LABEL "%d\n", l);
             putq("\tjmp " LABEL "%d\n", l+2);
@@ -614,7 +403,7 @@ Symb emitexpr(Node *n) {
             sr.ctyp = T_INT;
             break;
 
-        case OP_FRED:
+        case LIT_STR:
             sr.t = Glo;
             sr.u.n = n->s.u.n;
             sr.ctyp = IDIR(T_INT);
@@ -661,7 +450,7 @@ Symb emitexpr(Node *n) {
             o = n->op == OP_INC ? OP_ADD : OP_SUB;
             sl = lval(n->l);
             s0.t = Tmp;
-            s0.u.n = tmp++;
+            s0.u.n = reserveTmp();
             s0.ctyp = sl.ctyp;
             emitload(s0, sl);
             s1.t = Con;
@@ -696,7 +485,7 @@ Symb emitexpr(Node *n) {
         putq("\t" TEMP "%d =l div ", tmp);
         emitsymb(sr);
         putq(", %d\n", SIZE(DREF(s0.ctyp)));
-        sr.u.n = tmp++;
+        sr.u.n = reserveTmp();
     }
     if (n->op == OP_INC  ||  n->op == OP_DEC) {
         putq("\tstore%c ", irtyp(sl.ctyp));
@@ -742,15 +531,13 @@ void emitboolop(Node *n, int lt, int lf) {
             putq(", " LABEL "%d, " LABEL "%d\n", lt, lf);
             break;
         case OP_OR:
-            l = lbl;
-            lbl += 1;
+            l = reserve(1);
             emitboolop(n->l, lt, l);
             putq(LABEL "%d\n", l);
             emitboolop(n->r, lt, lf);
             break;
         case OP_AND:
-            l = lbl;
-            lbl += 1;
+            l = reserve(1);
             emitboolop(n->l, l, lf);
             putq(LABEL "%d\n", l);
             emitboolop(n->r, lt, lf);
@@ -767,7 +554,17 @@ int emitstmt(Node *s, int b) {
 
     switch (s->op) {
         default:
-            die("invalid statement %d", s->op);
+            die("invalid statement %d:\"%s\" @ %d", s->op, optopp[s->op], s->lineno);
+        case OP_ASSIGN:
+        case NAME:
+        case LIT_STR:
+            emitexpr(s);
+            return 0;
+        case pt_declaration:
+            emitLocalDecl(s->l->s.ctyp, s->r);
+            return 0;
+        case pt_argument_expression_list:
+
         case Ret:
             PP(emit, "Ret");
             x = emitexpr(s->l);
@@ -785,16 +582,14 @@ int emitstmt(Node *s, int b) {
         case Seq:
             return emitstmt(s->l, b) || emitstmt(s->r, b);
         case If:
-            l = lbl;
-            lbl += 2;
+            l = reserve(2);
             emitboolop(s->l, l, l+1);
             putq(LABEL "%d\n", l);
             emitstmt(s->r, b);
             putq(LABEL "%d\n", l+1);
             return 0;
         case IfElse:
-            l = lbl;
-            lbl += 3;
+            l = reserve(3);
             emitboolop(s->l, l, l+1);
             putq(LABEL "%d\n", l);
             Node * e = s->r;
@@ -805,8 +600,7 @@ int emitstmt(Node *s, int b) {
                 putq(LABEL "%d\n", l+2);
             return e->r && r;
         case While:
-            l = lbl;
-            lbl += 3;
+            l = reserve(3);
             putq(LABEL "%d\n", l);
             emitboolop(s->l, l+1, l+2);
             putq(LABEL "%d\n", l+1);
@@ -823,13 +617,16 @@ void startFunc(unsigned long t, Node *fnname, Node *params) {
     PP(emit, "startFunc");
 
     varadd(fnname->s.u.v, 1, FUNC(t));
-    putq("export function %c $%s(", irtyp(t), fnname->s.u.v);
+    if (t == T_VOID)
+        putq("export function $%s(", fnname->s.u.v);
+    else
+        putq("export function %c $%s(", irtyp(t), fnname->s.u.v);
     n = params;
     if (n)
         for (;;) {
             s = varget(n->s.u.v);
             putq("%c ", irtyp(s->ctyp));
-            putq(TEMP "%d", tmp++);
+            putq(TEMP "%d", reserveTmp());
             n = n->r;
             if (n)
                 putq(", ");
@@ -837,7 +634,7 @@ void startFunc(unsigned long t, Node *fnname, Node *params) {
                 break;
         }
     putq(") {\n");
-    putq(LABEL "%d\n", lbl++);
+    putq(LABEL "%d\n", reserve(1));
     for (i=SEED_START, n=params; n; i++, n=n->r) {
         s = varget(n->s.u.v);
         m = SIZE(s->ctyp);
@@ -850,43 +647,79 @@ void startFunc(unsigned long t, Node *fnname, Node *params) {
 
 void finishFunc(Node *s) {
     PP(emit, "finishFunc");
-    if (!emitstmt(s, -1)) putq("\tret 0\n");
+    if (!emitstmt(s, -1)) putq("\tret\n");    // no return statement
     putq("}\n\n");
     varclr();
-    tmp = SEED_START;
 }
 
 
 void c99_emitfunc(Node *ds, Node *d, Node *dl, Node* cs) {
     // declaration_specifiers declarator declaration_list compound_statement
-    if ((ds->s.ctyp != T_INT) && (ds->s.ctyp != T_DOUBLE)) die("ds->s.ctyp != T_INT @ %d", __LINE__);
-    if (d->op != pt_direct_declarator) die("d->op != pt_direct_declarator got %d @ %d", d->op, __LINE__);
-    if (d->l->op != NAME) die("d->l->op != NAME got %d @ %d", d->op, __LINE__);
+    PP(emit, "c99_emitfunc");
+    if ((ds->s.ctyp != T_INT) && (ds->s.ctyp != T_DOUBLE) && (ds->s.ctyp != T_VOID)) die("ds->s.ctyp == %s @ %d", optopp[ds->s.ctyp], __LINE__);
+    switch (d->op) {
+        case func_def:
+            break;
+        case pt_declarator:
+            break;
+        default:
+            die("got %d:%s @ %d", d->op, optopp[d->op], __LINE__);
+    }
+    if (!d->l) die("!d->l @ %d", __LINE__);
+    if (d->l->op != NAME) die("d->l->op != NAME got %d:%s @ %d", d->l->op, optopp[d->op], d->l->lineno);
+    PP(emit, "1");
     startFunc(ds->s.ctyp, d->l, d->r);
+    PP(emit, "2");
     finishFunc(cs);
-    return;
+    PP(emit, "3");
 }
 
 
-void emitLocalDecl(int t, Node *varname) {
+void emitLocalDecl(int t, Node *n) {
     PP(emit, "emitLocalDecl\n");
     // OPEN: allow multiple names for each type
     int s;  char *v;
     if (t == T_VOID) die("invalid void declaration");
-    v = varname->s.u.v;
+    PP(emit, "n.op: %d %s\n", n->op, n->s.u.v);
+    v = n->s.u.v;
     s = SIZE(t);
     varadd(v, 0, t);
     putq("\t" LOCAL "%s =l alloc%d %d\n", v, s, s);
 }
 
 
-void declareGlobal(int t, Node *globalname) {
-    if (t == T_VOID) die("invalid void declaration");
+void declareGlobal(int t, char v[NString]) {
     if (nglo == NGlo) die("too many string literals");
     globals[nglo] = alloc(sizeof "{ x 0 }");
     sprintf(globals[nglo], "{ %c 0 }", irtyp(t));
-    varadd(globalname->s.u.v, nglo++, t);
+    varadd(v, nglo++, t);
 }
+
+
+void c99_declareGlobalVariable(Node *d) {
+    PP(parse, "c99_declareGlobalVariable\n");
+    switch (d->op) {
+        default:
+            die("unhandled global declaration %d @ %d", d->op, d->lineno);
+        case pt_declaration:
+            if (d->l->s.ctyp == T_VOID) die("invalid void declaration");
+            declareGlobal(d->l->s.ctyp, d->r->s.u.v);
+            break;
+    }
+//    if ((ds->s.ctyp != T_INT) && (ds->s.ctyp != T_DOUBLE) && (ds->s.ctyp != T_VOID)) die("ds->s.ctyp != T_INT @ %d", __LINE__);
+//    if (d->op != pt_direct_declarator) die("d->op != pt_direct_declarator got %d @ %d", d->op, __LINE__);
+//    if (d->l->op != NAME) die("d->l->op != NAME got %d @ %d", d->op, __LINE__);
+//    startFunc(ds->s.ctyp, d->l, d->r);
+//    finishFunc(cs);
+}
+
+
+
+
+// exceptions - simplify code as they provide an early escape mechanism that doesn't impact everything
+// however exit() is horrible systems wise
+//    if (nglo == NGlo) die("too many string literals");
+
 
 
 /*End of C declarations*/
@@ -915,7 +748,6 @@ void declareGlobal(int t, Node *globalname) {
 
 %start translation_unit
 
-
 %type <n> expression pointer unary_operator assignment_expression unary_expression assignment_operator cast_expression
 %type <n> type_name compound_statement declarator declaration_list block_item_list declaration declaration_specifiers
 %type <n> primary_expression postfix_expression initializer_list designation initializer designator_list
@@ -924,8 +756,8 @@ void declareGlobal(int t, Node *globalname) {
 %type <n> logical_or_expression conditional_expression enumerator type_qualifier constant_expression designator
 %type <n> labeled_statement statement expression_statement selection_statement iteration_statement jump_statement
 %type <n> storage_class_specifier function_specifier struct_or_union parameter_list direct_declarator translation_unit
-%type <n> external_declaration type_specifier parameter_declaration parameter_type_list
-
+%type <n> external_declaration type_specifier parameter_declaration parameter_type_list direct_abstract_declarator
+%type <n> abstract_declarator init_declarator_list block_item argument_expression_list identifier_list
 
 
 
@@ -940,38 +772,38 @@ primary_expression
 
 postfix_expression
 : primary_expression
-| postfix_expression '[' expression ']'                 { die("NYI @ %d", $%); }
+| postfix_expression '[' expression ']'                 { node(OP_INDEX, $1, $3, $%); }
 | postfix_expression '(' ')'                            { die("NYI @ %d", $%); }
-| postfix_expression '(' argument_expression_list ')'   { die("NYI @ %d", $%); }
+| postfix_expression '(' argument_expression_list ')'   { PP(pt, "postfix_expression '(' argument_expression_list ')'", $%); node(OP_CALL, $1, $3, $%); }
 | postfix_expression '.' IDENTIFIER                     { die("NYI @ %d", $%); }
 | postfix_expression PTR_OP IDENTIFIER                  { die("NYI @ %d", $%); }
-| postfix_expression INC_OP                             { $$ = node(OP_INC, $1, 0); }
-| postfix_expression DEC_OP                             { $$ = node(OP_DEC, $1, 0); }
+| postfix_expression INC_OP                             { $$ = node(OP_INC, $1, 0, $%); }
+| postfix_expression DEC_OP                             { $$ = node(OP_DEC, $1, 0, $%); }
 | '(' type_name ')' '{' initializer_list '}'            { die("NYI @ %d", $%); }
 | '(' type_name ')' '{' initializer_list ',' '}'        { die("NYI @ %d", $%); }
 ;
 
 argument_expression_list
 : assignment_expression
-| argument_expression_list ',' assignment_expression    { die("NYI @ %d", $%); }
+| argument_expression_list ',' assignment_expression    { $$ = node(pt_argument_expression_list, $1, $3, $%); }
 ;
 
 unary_expression
 : postfix_expression
-| INC_OP unary_expression                               { $$ = node(OP_INC, 0, $2); }
-| DEC_OP unary_expression                               { $$ = node(OP_DEC, 0, $2); }
+| INC_OP unary_expression                               { $$ = node(OP_INC, 0, $2, $%); }
+| DEC_OP unary_expression                               { $$ = node(OP_DEC, 0, $2, $%); }
 | unary_operator cast_expression                        { $$ = bindl($1, $2, $%); }
-| SIZEOF unary_expression                               { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($2); }
-| SIZEOF '(' type_name ')'                              { $$ = node(LIT_INT, 0, 0); $$->s.u.n = SIZE($3); }
+| SIZEOF unary_expression                               { $$ = node(LIT_INT, 0, 0, $%); $$->s.u.n = SIZE($2); }
+| SIZEOF '(' type_name ')'                              { $$ = node(LIT_INT, 0, 0, $%); $$->s.u.n = SIZE($3); }
 ;
 
 unary_operator
-: '&'                                                   { $$ = node(OP_ADDR, 0, 0); }
-| '*'                                                   { $$ = node(OP_DEREF, 0, 0); }
+: '&'                                                   { $$ = node(OP_ADDR, 0, 0, $%); }
+| '*'                                                   { $$ = node(OP_DEREF, 0, 0, $%); }
 | '+'                                                   { die("NYI @ %d", $%); }
 | '-'                                                   { die("NYI @ %d", $%); }
-| '~'                                                   { $$ = node(OP_BINV, 0, 0); }
-| '!'                                                   { $$ = node(OP_NOT, 0, 0); }
+| '~'                                                   { $$ = node(OP_BINV, 0, 0, $%); }
+| '!'                                                   { $$ = node(OP_NOT, 0, 0, $%); }
 ;
 
 cast_expression
@@ -981,60 +813,60 @@ cast_expression
 
 multiplicative_expression
 : cast_expression
-| multiplicative_expression '*' cast_expression         { $$ = node(OP_MUL, $1, $3); }
-| multiplicative_expression '/' cast_expression         { $$ = node(OP_DIV, $1, $3); }
-| multiplicative_expression '%' cast_expression         { $$ = node(OP_MOD, $1, $3); }
+| multiplicative_expression '*' cast_expression         { $$ = node(OP_MUL, $1, $3, $%); }
+| multiplicative_expression '/' cast_expression         { $$ = node(OP_DIV, $1, $3, $%); }
+| multiplicative_expression '%' cast_expression         { $$ = node(OP_MOD, $1, $3, $%); }
 ;
 
 additive_expression
 : multiplicative_expression
-| additive_expression '+' multiplicative_expression     { $$ = node(OP_ADD, $1, $3); }
-| additive_expression '-' multiplicative_expression     { $$ = node(OP_SUB, $1, $3); }
+| additive_expression '+' multiplicative_expression     { $$ = node(OP_ADD, $1, $3, $%); }
+| additive_expression '-' multiplicative_expression     { $$ = node(OP_SUB, $1, $3, $%); }
 ;
 
 shift_expression
 : additive_expression
-| shift_expression LEFT_OP additive_expression          { $$ = node(OP_LSHIFT, $1, $3); }
-| shift_expression RIGHT_OP additive_expression         { $$ = node(OP_RSHIFT, $1, $3); }
+| shift_expression LEFT_OP additive_expression          { $$ = node(OP_LSHIFT, $1, $3, $%); }
+| shift_expression RIGHT_OP additive_expression         { $$ = node(OP_RSHIFT, $1, $3, $%); }
 ;
 
 relational_expression
 : shift_expression
-| relational_expression '<' shift_expression            { $$ = node(OP_LT, $1, $3); }
-| relational_expression '>' shift_expression            { $$ = node(OP_LT, $3, $1); }
-| relational_expression LE_OP shift_expression          { $$ = node(OP_LE, $1, $3); }
-| relational_expression GE_OP shift_expression          { $$ = node(OP_LE, $3, $1); }
+| relational_expression '<' shift_expression            { $$ = node(OP_LT, $1, $3, $%); }
+| relational_expression '>' shift_expression            { $$ = node(OP_LT, $3, $1, $%); }
+| relational_expression LE_OP shift_expression          { $$ = node(OP_LE, $1, $3, $%); }
+| relational_expression GE_OP shift_expression          { $$ = node(OP_LE, $3, $1, $%); }
 ;
 
 equality_expression
 : relational_expression
-| equality_expression EQ_OP relational_expression       { $$ = node(OP_EQ, $1, $3); }
-| equality_expression NE_OP relational_expression       { $$ = node(OP_NE, $1, $3); }
+| equality_expression EQ_OP relational_expression       { $$ = node(OP_EQ, $1, $3, $%); }
+| equality_expression NE_OP relational_expression       { $$ = node(OP_NE, $1, $3, $%); }
 ;
 
 and_expression
 : equality_expression
-| and_expression '&' equality_expression                { $$ = node(OP_BAND, $1, $3); }
+| and_expression '&' equality_expression                { $$ = node(OP_BAND, $1, $3, $%); }
 ;
 
 exclusive_or_expression
 : and_expression
-| exclusive_or_expression '^' and_expression            { $$ = node(OP_BXOR, $1, $3); }
+| exclusive_or_expression '^' and_expression            { $$ = node(OP_BXOR, $1, $3, $%); }
 ;
 
 inclusive_or_expression
 : exclusive_or_expression
-| inclusive_or_expression '|' exclusive_or_expression   { $$ = node(OP_ADD, $1, $3); }
+| inclusive_or_expression '|' exclusive_or_expression   { $$ = node(OP_ADD, $1, $3, $%); }
 ;
 
 logical_and_expression
 : inclusive_or_expression
-| logical_and_expression AND_OP inclusive_or_expression { $$ = node(OP_ADD, $1, $3); }
+| logical_and_expression AND_OP inclusive_or_expression { $$ = node(OP_ADD, $1, $3, $%); }
 ;
 
 logical_or_expression
 : logical_and_expression
-| logical_or_expression OR_OP logical_and_expression    { $$ = node(OP_ADD, $1, $3); }
+| logical_or_expression OR_OP logical_and_expression    { $$ = node(OP_ADD, $1, $3, $%); }
 ;
 
 conditional_expression
@@ -1044,22 +876,22 @@ conditional_expression
 
 assignment_expression
 : conditional_expression
-| unary_expression assignment_operator assignment_expression    { $$ = mkopassign($2, $1, $3); }
+| unary_expression assignment_operator assignment_expression    { $$ = mkopassign($2, $1, $3, $%); }
 ;
 
 
 assignment_operator
-: '='                                                   { $$ = node(OP_ASSIGN, 0, 0); }
-| MUL_ASSIGN                                            { $$ = node(OP_MUL, 0, 0); }
-| DIV_ASSIGN                                            { $$ = node(OP_DIV, 0, 0); }
-| MOD_ASSIGN                                            { $$ = node(OP_MOD, 0, 0); }
-| ADD_ASSIGN                                            { $$ = node(OP_ADD, 0, 0); }
-| SUB_ASSIGN                                            { $$ = node(OP_SUB, 0, 0); }
-| LEFT_ASSIGN                                           { $$ = node(OP_LSHIFT, 0, 0); }
-| RIGHT_ASSIGN                                          { $$ = node(OP_RSHIFT, 0, 0); }
-| AND_ASSIGN                                            { $$ = node(OP_BAND, 0, 0); }
-| XOR_ASSIGN                                            { $$ = node(OP_BXOR, 0, 0); }
-| OR_ASSIGN                                             { $$ = node(OP_BOR, 0, 0); }
+: '='                                                   { $$ = node(OP_ASSIGN, 0, 0, $%); }
+| MUL_ASSIGN                                            { $$ = node(OP_MUL, 0, 0, $%); }
+| DIV_ASSIGN                                            { $$ = node(OP_DIV, 0, 0, $%); }
+| MOD_ASSIGN                                            { $$ = node(OP_MOD, 0, 0, $%); }
+| ADD_ASSIGN                                            { $$ = node(OP_ADD, 0, 0, $%); }
+| SUB_ASSIGN                                            { $$ = node(OP_SUB, 0, 0, $%); }
+| LEFT_ASSIGN                                           { $$ = node(OP_LSHIFT, 0, 0, $%); }
+| RIGHT_ASSIGN                                          { $$ = node(OP_RSHIFT, 0, 0, $%); }
+| AND_ASSIGN                                            { $$ = node(OP_BAND, 0, 0, $%); }
+| XOR_ASSIGN                                            { $$ = node(OP_BXOR, 0, 0, $%); }
+| OR_ASSIGN                                             { $$ = node(OP_BOR, 0, 0, $%); }
 ;
 
 expression
@@ -1072,52 +904,52 @@ constant_expression
 ;
 
 declaration
-: declaration_specifiers ';'                            { $$ = $1; }
-| declaration_specifiers init_declarator_list ';'       { die("NYI @ %d", $%); }
+: declaration_specifiers ';'                            { die("declaration_specifiers ';'   =>   declaration"); $$ = $1; }
+| declaration_specifiers init_declarator_list ';'       { PP(pt, "declaration_specifiers init_declarator_list ';'  =>  declaration"); $$ = node(pt_declaration, $1, $2, $%); }
 ;
 
 declaration_specifiers
 : storage_class_specifier
 | storage_class_specifier declaration_specifiers        { die("NYI @ %d", $%); }
 | type_specifier
-| type_specifier declaration_specifiers                 { die("NYI @ %d", $%); }
+| type_specifier declaration_specifiers                 { PP(pt, "type_specifier declaration_specifiers   =>   declaration_specifiers"); die("NYI @ %d", $%); }
 | type_qualifier
-| type_qualifier declaration_specifiers                 { die("NYI @ %d", $%); }
-| function_specifier
+| type_qualifier declaration_specifiers                 { PP(pt, "type_qualifier declaration_specifiers   =>   declaration_specifiers"); die("NYI @ %d", $%); }
+| function_specifier                                    { PP(pt, "function_specifier   =>   declaration_specifiers"); }
 | function_specifier declaration_specifiers             { die("NYI @ %d", $%); }
 ;
 
 init_declarator_list
-: init_declarator
+: init_declarator                                       { PP(pt, "init_declarator   =>   init_declarator_list"); }
 | init_declarator_list ',' init_declarator              { die("NYI @ %d", $%); }
 ;
 
 init_declarator
-: declarator
+: declarator                                            { PP(pt, "declarator   =>   init_declarator"); }
 | declarator '=' initializer                            { die("NYI @ %d", $%); }
 ;
 
 storage_class_specifier
-: TYPEDEF                                               { $$ = mktype(T_TYPEDEF); }
-| EXTERN                                                { $$ = mktype(T_EXTERN); }
-| STATIC                                                { $$ = mktype(T_STATIC); }
-| AUTO                                                  { $$ = mktype(T_AUTO); }
-| REGISTER                                              { $$ = mktype(T_REGISTER); }
+: TYPEDEF                                               { PP(pt, "TYPEDEF"); $$ = node(T_TYPEDEF, 0, 0, $%); }
+| EXTERN                                                { PP(pt, "EXTERN"); $$ = mktype(T_EXTERN, $%); }
+| STATIC                                                { PP(pt, "STATIC"); $$ = mktype(T_STATIC, $%); }
+| AUTO                                                  { $$ = mktype(T_AUTO, $%); }
+| REGISTER                                              { $$ = mktype(T_REGISTER, $%); }
 ;
 
 type_specifier
-: VOID                                                  { $$ = mktype(T_VOID); }
-| CHAR                                                  { $$ = mktype(T_CHAR); }
-| SHORT                                                 { $$ = mktype(T_SHORT); }
-| INT                                                   { $$ = mktype(T_INT); }
-| LONG                                                  { $$ = mktype(T_LONG); }
-| FLOAT                                                 { $$ = mktype(T_FLOAT); }
-| DOUBLE                                                { $$ = mktype(T_DOUBLE); }
-| SIGNED                                                { $$ = mktype(T_SIGNED); }
-| UNSIGNED                                              { $$ = mktype(T_UNSIGNED); }
-| BOOL                                                  { $$ = mktype(T_BOOL); }
-| COMPLEX                                               { $$ = mktype(T_COMPLEX); }
-| IMAGINARY                                             { $$ = mktype(T_IMAGINARY); }
+: VOID                                                  { PP(pt, "VOID   =>   type_specifier"); $$ = mktype(T_VOID, $%); }
+| CHAR                                                  { $$ = mktype(T_CHAR, $%); }
+| SHORT                                                 { $$ = mktype(T_SHORT, $%); }
+| INT                                                   { PP(pt, "INT   =>   type_specifier"); $$ = mktype(T_INT, $%); }
+| LONG                                                  { $$ = mktype(T_LONG, $%); }
+| FLOAT                                                 { $$ = mktype(T_FLOAT, $%); }
+| DOUBLE                                                { PP(pt, "DOUBLE   =>   type_specifier"); $$ = mktype(T_DOUBLE, $%); }
+| SIGNED                                                { $$ = mktype(T_SIGNED, $%); }
+| UNSIGNED                                              { $$ = mktype(T_UNSIGNED, $%); }
+| BOOL                                                  { $$ = mktype(T_BOOL, $%); }
+| COMPLEX                                               { $$ = mktype(T_COMPLEX, $%); }
+| IMAGINARY                                             { $$ = mktype(T_IMAGINARY, $%); }
 | struct_or_union_specifier
 | enum_specifier
 | TYPE_NAME                                             { die("NYI @ %d", $%); }
@@ -1130,8 +962,8 @@ struct_or_union_specifier
 ;
 
 struct_or_union
-: STRUCT                                                { $$ = mktype(T_STRUCT); }
-| UNION                                                 { $$ = mktype(T_UNION); }
+: STRUCT                                                { PP(pt, "STRUCT   =>   struct_or_union"); $$ = mktype(T_STRUCT, $%); }
+| UNION                                                 { PP(pt, "UNION   =>   struct_or_union"); $$ = mktype(T_UNION, $%); }
 ;
 
 struct_declaration_list
@@ -1156,7 +988,7 @@ struct_declarator_list
 ;
 
 struct_declarator
-: declarator
+: declarator                                            { PP(pt, "declarator   =>   struct_declarator"); }
 | ':' constant_expression                               { die("NYI @ %d", $%); }
 | declarator ':' constant_expression                    { die("NYI @ %d", $%); }
 ;
@@ -1175,28 +1007,27 @@ enumerator_list
 ;
 
 enumerator
-: IDENTIFIER                                            { $$ = node(NAME, $1, 0); }
-| IDENTIFIER '=' constant_expression                    { $$ = node(OP_ASSIGN, $1, $3); }
+: IDENTIFIER                                            { $$ = node(NAME, $1, 0, $%); }
+| IDENTIFIER '=' constant_expression                    { $$ = node(OP_ASSIGN, $1, $3, $%); }
 ;
 
 type_qualifier
-: CONST                                                 { $$ = mktype(T_CONST); }
-| RESTRICT                                              { $$ = mktype(T_RESTRICT); }
-| VOLATILE                                              { $$ = mktype(T_VOLATILE); }
+: CONST                                                 { PP(pt, "CONST   =>   type_qualifier"); $$ = mktype(T_CONST, $%); }
+| RESTRICT                                              { $$ = mktype(T_RESTRICT, $%); }
+| VOLATILE                                              { $$ = mktype(T_VOLATILE, $%); }
 ;
 
 function_specifier
-: INLINE                                                { $$ = mktype(T_INLINE); }
+: INLINE                                                { $$ = mktype(T_INLINE, $%); }
 ;
 
 declarator
-: pointer direct_declarator                             { die("NYI @ %d", $%); }
-| direct_declarator
+: pointer direct_declarator                             { PP(pt, "pointer direct_declarator   =>   declarator"); $$ = node(pt_declarator, parsePointer($1), $2, $%); }
+| direct_declarator                                     { PP(pt, "direct_declarator   =>   declarator"); $$ = node(pt_declarator, 0, $1, $%); }
 ;
 
-
 direct_declarator
-: IDENTIFIER
+: IDENTIFIER                                                                    { PP(pt, "IDENTIFIER %s   =>   direct_declarator", $1->s.u.v); }
 | '(' declarator ')'                                                            { die("NYI @ %d", $%); }
 | direct_declarator '[' type_qualifier_list assignment_expression ']'           { die("NYI @ %d", $%); }
 | direct_declarator '[' type_qualifier_list ']'                                 { die("NYI @ %d", $%); }
@@ -1206,54 +1037,53 @@ direct_declarator
 | direct_declarator '[' type_qualifier_list '*' ']'                             { die("NYI @ %d", $%); }
 | direct_declarator '[' '*' ']'                                                 { die("NYI @ %d", $%); }
 | direct_declarator '[' ']'                                                     { die("NYI @ %d", $%); }
-| direct_declarator '(' parameter_type_list ')'                                 { $$ = node(pt_direct_declarator, $1, $3); }
-| direct_declarator '(' identifier_list ')'                                     { die("NYI @ %d", $%); }
-| direct_declarator '(' ')'                                                     { die("NYI @ %d", $%); }
+| direct_declarator '(' parameter_type_list ')'                                 { PP(pt, "direct_declarator '(' parameter_type_list ')'   =>   direct_declarator");  $$ = node(func_def, $1, $3, $%); }
+| direct_declarator '(' identifier_list ')'                                     { die("direct_declarator '(' identifier_list ')'   =>   direct_declarator");  }
+| direct_declarator '(' ')'                                                     { PP(pt, "direct_declarator '(' ')'   =>   direct_declarator"); $$ = node(func_def, $1, 0, $%); }
 ;
 
-pointer                                                 
-: '*'                                                   { die("* NYI @ %d", $%); }
-| '*' type_qualifier_list                               { die("* type_qualifier_list NYI @ %d", $%); }
-| '*' pointer                                           { die("* pointer NYI @ %d", $%); }
-| '*' type_qualifier_list pointer                       { die("* type_qualifier_list pointer NYI @ %d", $%); }
+pointer
+: '*'                                                   { PP(pt, "'*'   =>   pointer"); $$ = mktype(T_PTR, $%); }
+| '*' type_qualifier_list                               { PP(pt, "'*' type_qualifier_list   =>   pointer"); }
+| '*' pointer                                           { PP(pt, "'*' pointer   =>   pointer"); $$ = bindr(mktype(T_PTR, $%), $2, $%); }
+| '*' type_qualifier_list pointer                       { PP(pt, "'*' type_qualifier_list pointer   =>   pointer"); }
 ;
 
 type_qualifier_list
-: type_qualifier
+: type_qualifier                                        { PP(pt, "type_qualifier   =>   type_qualifier_list"); }
 | type_qualifier_list type_qualifier                    { die("NYI @ %d", $%); }
 ;
 
-
 parameter_type_list
-: parameter_list
-| parameter_list ',' ELLIPSIS                           { die("NYI @ %d", $%); }
+: parameter_list                                        { PP(pt, "parameter_list   =>   parameter_type_list"); }
+| parameter_list ',' ELLIPSIS                           { $$ = bindr($1, mktype(T_ELLIPSIS, $%), $%); }
 ;
 
 parameter_list
-: parameter_declaration
-| parameter_list ',' parameter_declaration              { $$ = bindr($1, $3, $%); }
+: parameter_declaration                                 { PP(pt, "parameter_declaration   =>   parameter_list"); }
+| parameter_list ',' parameter_declaration              { PP(pt, "parameter_list ',' parameter_declaration   =>   parameter_list"); $$ = node(pt_parameter_list, $1, $3, $%); }
 ;
 
 parameter_declaration
-: declaration_specifiers declarator                     { $$ = c99_mkparam($1, $2); }
-| declaration_specifiers abstract_declarator            { die("NYI @ %d", $%); }
-| declaration_specifiers
+: declaration_specifiers declarator                     { PP(pt, "declaration_specifiers declarator   =>   parameter_declaration"); $$ = c99_mkparam($1, $2, $%); }
+| declaration_specifiers abstract_declarator            { PP(pt, "declaration_specifiers abstract_declarator   =>   parameter_declaration"); $$ = c99_mkparam($1, $2, $%); }
+| declaration_specifiers                                { PP(pt, "declaration_specifiers   =>   parameter_declaration"); }
 ;
 
 identifier_list
-: IDENTIFIER
+: IDENTIFIER                                            { PP(pt, "IDENTIFIER %s   =>   identifier_list", $1->s.u.v); }
 | identifier_list ',' IDENTIFIER                        { die("NYI @ %d", $%); }
 ;
 
 type_name
-: specifier_qualifier_list
+: specifier_qualifier_list                              { PP(pt, "specifier_qualifier_list   =>   type_name"); }
 | specifier_qualifier_list abstract_declarator          { die("NYI @ %d", $%); }
 ;
 
 abstract_declarator
 : pointer
-| direct_abstract_declarator
-| pointer direct_abstract_declarator                    { die("NYI @ %d", $%); }
+| direct_abstract_declarator                            { $$ = node(pt_abstract_declarator, 0, $1, $%); }
+| pointer direct_abstract_declarator                    { $$ = node(pt_abstract_declarator, parsePointer($1), $2, $%); }
 ;
 
 direct_abstract_declarator
@@ -1284,7 +1114,7 @@ initializer_list
 ;
 
 designation
-: designator_list '='                                   { $$ = node(OP_ASSIGN, $1, 0); }
+: designator_list '='                                   { $$ = node(OP_ASSIGN, $1, 0, $%); }
 ;
 
 designator_list
@@ -1293,8 +1123,8 @@ designator_list
 ;
 
 designator
-: '[' constant_expression ']'                           { $$ = node(OP_INDEX, 0, $2); }
-| '.' IDENTIFIER                                        { $$ = node(OP_ATTR, 0, $2); }
+: '[' constant_expression ']'                           { $$ = node(OP_INDEX, 0, $2, $%); }
+| '.' IDENTIFIER                                        { $$ = node(OP_ATTR, 0, $2, $%); }
 ;
 
 statement
@@ -1307,24 +1137,24 @@ statement
 ;
 
 labeled_statement
-: IDENTIFIER ':' statement                              { $$ = node(Label, $1, $3); }
-| CASE constant_expression ':' statement                { $$ = node(Case, $2, $4); }
-| DEFAULT ':' statement                                 { $$ = node(Default, $3, 0); }
+: IDENTIFIER ':' statement                              { $$ = node(Label, $1, $3, $%); }
+| CASE constant_expression ':' statement                { $$ = node(Case, $2, $4, $%); }
+| DEFAULT ':' statement                                 { $$ = node(Default, $3, 0, $%); }
 ;
 
 compound_statement
-: '{' '}'                                               { $$ = 0; }
-| '{' block_item_list '}'                               { $$ = $2; }
+: '{' '}'                                               { PP(pt, "'{' '}'    =>   compound_statement"); $$ = 0; }
+| '{' block_item_list '}'                               { PP(pt, "'{' block_item_list '}'    =>   compound_statement"); $$ = $2; }
 ;
 
 block_item_list
-: block_item
-| block_item_list block_item                            { die("NYI @ %d", $%); }
+: block_item                                            { PP(pt, "block_item   =>   block_item_list"); }
+| block_item_list block_item                            { PP(pt, "block_item_list block_item   =>   block_item_list"); $$ = node(Seq, $1, $2, $%); }
 ;
 
 block_item
-: declaration
-| statement
+: declaration                                           { PP(pt, "declaration   =>   block_item"); }
+| statement                                             { PP(pt, "statement   =>   block_item"); }
 ;
 
 expression_statement
@@ -1333,9 +1163,9 @@ expression_statement
 ;
 
 selection_statement
-: IF '(' expression ')' statement                       { $<n>$ = node(If, $3, $5); }
-| IF '(' expression ')' statement ELSE statement        { $<n>$ = mkifelse($3, $5, $7); }
-| SWITCH '(' expression ')' statement                   { die("SWITCH NYI"); }
+: IF '(' expression ')' statement                       { $$ = node(If, $3, $5, $%); }
+| IF '(' expression ')' statement ELSE statement        { $$ = mkifelse($3, $5, $7, $%); }
+| SWITCH '(' expression ')' statement                   { die("SWITCH NYI @ %s", $%); }
 ;
 
 iteration_statement
@@ -1344,17 +1174,17 @@ iteration_statement
 | FOR '(' expression_statement expression_statement ')' statement       { die("NYI @ %d", $%); }
 | FOR '(' expression_statement
     expression_statement expression ')'
-    statement                                                           { die("NYI @ %d", $%); }
+    statement                                                           { PP(pt, "specifier_qualifier_list   =>   type_name"); $$ = mkfor($3, $4, $5, $7, $%); }
 | FOR '(' declaration expression_statement ')' statement                { die("NYI @ %d", $%); }
 | FOR '(' declaration expression_statement expression ')' statement     { die("NYI @ %d", $%); }
 ;
 
 jump_statement
-: GOTO IDENTIFIER ';'                                   { $$ = node(Goto, $2, 0); }
-| CONTINUE ';'                                          { $$ = node(Continue, 0, 0); }
-| BREAK ';'                                             { $$ = node(Break, 0, 0); }
-| RETURN ';'                                            { $$ = node(Ret, 0, 0); }
-| RETURN expression ';'                                 { $$ = node(Ret, $2, 0); }
+: GOTO IDENTIFIER ';'                                   { $$ = node(Goto, $2, 0, $%); }
+| CONTINUE ';'                                          { $$ = node(Continue, 0, 0, $%); }
+| BREAK ';'                                             { $$ = node(Break, 0, 0, $%); }
+| RETURN ';'                                            { $$ = node(Ret, 0, 0, $%); }
+| RETURN expression ';'                                 { $$ = node(Ret, $2, 0, $%); }
 ;
 
 translation_unit
@@ -1364,79 +1194,49 @@ translation_unit
 
 external_declaration
 : function_definition
-| declaration
+| declaration                                           { PP(pt, "declaration   =>   external_declaration"); c99_declareGlobalVariable($1); }
 ;
 
 function_definition
-: declaration_specifiers declarator declaration_list compound_statement     { c99_emitfunc($1, $2, $3, $4); }
-| declaration_specifiers declarator compound_statement                      { c99_emitfunc($1, $2, 0, $3); }
+: declaration_specifiers declarator declaration_list compound_statement     { PP(pt, "declaration_specifiers declarator declaration_list compound_statement   =>   function_definition"); c99_emitfunc($1, $2, $3, $4); }
+| declaration_specifiers declarator compound_statement                      { PP(pt, "declaration_specifiers declarator compound_statement   =>   function_definition"); c99_emitfunc($1, $2, 0, $3); }
 ;
 
 declaration_list
 : declaration
-| declaration_list declaration                          { $$ = node(Seq, $1, $2); }
+| declaration_list declaration                          { $$ = node(Seq, $1, $2, $%); }
 ;
 
 %%
 
-#include <stdio.h>
+
+struct {
+    char *s;
+    int t;
+} kwds[] = {
+    { "void", VOID },           { "char", CHAR },           { "short", SHORT },             { "int", INT },
+    { "long", LONG },           { "float", FLOAT },         { "double", DOUBLE },           { "signed", SIGNED },
+    { "unsigned", UNSIGNED },   { "bool", BOOL },           { "complex", COMPLEX },         { "imaginary", IMAGINARY },
+
+    { "if", IF },               { "else", ELSE },           { "for", FOR },                 { "do", DO },
+    { "while", WHILE },         { "switch", SWITCH },       { "case", CASE },               { "default", DEFAULT },
+    { "goto", GOTO },           { "continue", CONTINUE },   { "return", RETURN },           { "break", BREAK },
+
+    { "sizeof", SIZEOF },       { "typedef", TYPEDEF },     { "extern", EXTERN },           { "static", STATIC },
+    { "auto", AUTO },           { "register", REGISTER },   { "struct", STRUCT },           { "union", UNION },
+    { 0, 0 }
+};
 
 
 
 int yylex() {
-    struct {
-        char *s;
-        int t;
-    } kwds[] = {
-        { "void", VOID },
-        { "char", CHAR },
-        { "short", SHORT },
-        { "int", INT },
-        { "long", LONG },
-        { "float", FLOAT },
-        { "double", DOUBLE },
-        { "signed", SIGNED },
-        { "unsigned", UNSIGNED },
-        { "bool", BOOL },
-        { "complex", COMPLEX },
-        { "imaginary", IMAGINARY },
-
-        { "if", IF },
-        { "else", ELSE },
-        { "for", FOR },
-        { "do", DO },
-        { "while", WHILE },
-        { "switch", SWITCH },
-        { "case", CASE },
-        { "default", DEFAULT },
-        { "goto", GOTO },
-        { "continue", CONTINUE },
-        { "return", RETURN },
-        { "break", BREAK },
-
-        { "sizeof", SIZEOF },
-        { "typedef", TYPEDEF },
-        { "extern", EXTERN },
-        { "static", STATIC },
-        { "auto", AUTO },
-        { "register", REGISTER },
-        { "struct", STRUCT },
-        { "union", UNION },
-        { 0, 0 }
-    };
-    int i, c, c2, c3, n;
-    char v[NString], *p;
-    double d, s;
+    int i, c, c2, c3, n;  char v[NString], *p;  double d, s;
 
     do {
         c = getchar();
         if (c == '#') {
             // commentary from the preprocessor starts with # followed by a line number and the file it's come from
-            fscanf(stdin, "%d", &line);
-            scanf("%%*[^\"]");
-            scanf("\"");
-            scanf("%[^\"]", srcFfn);
-            // https://stackoverflow.com/questions/24483075/input-using-sscanf-with-regular-expression instead of regex "(?<=\")(.*)(?=\")" instead
+            scanLineAndSrcFfn();
             while ((c = getchar()) != '\n') {;}  // don't include a line with # on the line count
         }
         else if (c == '/') {
@@ -1446,9 +1246,7 @@ int yylex() {
             else
                 ungetc(c2, stdin);
         }
-        if (c == '\n') {
-            line++;
-        }
+        if (c == '\n') incLine();
     } while (isspace(c));
 
     if (c == EOF) {
@@ -1475,14 +1273,14 @@ int yylex() {
                 c = getchar();
             } while (isdigit(c));
             ungetc(c, stdin);
-            yylval.n = node(LIT_DEC, 0, 0);
+            yylval.n = node(LIT_DEC, 0, 0, __LINE__);
             yylval.n->s.u.d = d;
             PP(lex, "%f ", d);
             return CONSTANT;
         }
         else {
             ungetc(c, stdin);
-            yylval.n = node(LIT_INT, 0, 0);
+            yylval.n = node(LIT_INT, 0, 0, __LINE__);
             yylval.n->s.u.n = n;
             PP(lex, "%d ", n);
             return CONSTANT;
@@ -1501,7 +1299,7 @@ int yylex() {
         for (i=0; kwds[i].s; i++)
             if (strcmp(v, kwds[i].s) == 0)
                 return kwds[i].t;
-        yylval.n = node(NAME, 0, 0);
+        yylval.n = node(NAME, 0, 0, __LINE__);
         strcpy(yylval.n->s.u.v, v);
         PP(lex, "%s ", p);
         return IDENTIFIER;
@@ -1549,7 +1347,7 @@ int yylex() {
         strcpy(&p[i], "\", b 0 }");
         if (nglo == NGlo) die("too many globals");
         globals[nglo] = p;
-        yylval.n = node(OP_FRED, 0, 0);
+        yylval.n = node(LIT_STR, 0, 0, __LINE__);
         yylval.n->s.u.n = nglo++;
         PP(lex, "%s ", &p[i]);
         return STRING_LITERAL;
@@ -1598,7 +1396,8 @@ int yylex() {
 
 
 int main() {
-    gLevel = lex | parse | emit;
+    g_logging_level = parse | emit | error | pt;
+    inf = stdin;
     of = stdout;
     nglo = 1;
     if (yyparse() != 0) die("parse error");
@@ -1620,166 +1419,3 @@ void yyerror(char const *err) {
     die("parse error from yyerror");
 }
 
-
-
-// ---------------------------------------------------------------------------------------------------------------------
-// HELPERS
-// ---------------------------------------------------------------------------------------------------------------------
-
-Node * node(int op, Node *l, Node *r) {
-    Node *n = alloc(sizeof *n);
-    n->op = op;
-    n->l = l;
-    n->r = r;
-    return n;
-}
-
-Node * bindl(Node *n, Node *l, int lineno) {
-    if (n->l != 0) {
-        PP(parse, "bindl from @%d", lineno);
-        die("node.l already bound");
-    }
-    n->l = l;
-    return n;
-}
-
-Node * bindr(Node *n, Node *r, int lineno) {
-    if (n->r != 0) {
-        PP(parse, "bindr from @%d", lineno);
-        die("2nd arg of fn already bound");
-    }
-    n->r = r;
-    return n;
-}
-
-Node * bindlr(Node *n, Node *l, Node *r, int lineno) {
-    if (n->l != 0) {PP(parse, "bindlr from @%d", lineno); die("n.l already bound");}
-    if (n->r != 0) {PP(parse, "bindlr from @%d", lineno); die("n.r already bound");}
-    n->l = l;
-    n->r = r;
-    return n;
-}
-
-TLLHead * newTLLHead(int t, TLLHead *other) {
-    TLLHead *head = alloc(sizeof *head);
-    head->t = t;
-    if (other != NULL) head->r = other;
-    return head;
-}
-
-unsigned hash(char *s) {
-    unsigned h = 42;
-    while (*s) h += 11 * h + *s++;
-    return h % NVar;
-}
-
-void * alloc(size_t s) {
-    // OPEN: do a linked list of arenas - so can unwind more safely in Python
-    void *p = malloc(s);
-    if (!p) die("out of memory");
-    return p;
-}
-
-void die(char *msg, ...) {
-    va_list args;
-    fprintf(stderr, "\nline <= %d: ", line);
-    va_start(args, msg);
-    vfprintf(stderr, msg, args);
-    va_end(args);
-    fprintf(stderr, "\nin %s\n\n", srcFfn);
-    // OPEN: use setjmp and longjmp with deallocation of linked list of arenas
-    exit(1);
-}
-
-void varclr() {
-    for (unsigned h=0; h<NVar; h++)
-        if (!varh[h].glo) varh[h].v[0] = 0;
-}
-
-void varadd(char *v, int glo, unsigned ctyp) {
-    unsigned h0 = hash(v);
-    unsigned h = h0;
-    do {
-        if (varh[h].v[0] == 0) {
-            strcpy(varh[h].v, v);
-            varh[h].glo = glo;
-            varh[h].ctyp = ctyp;
-            return;
-        }
-        if (strcmp(varh[h].v, v) == 0) {
-            PP(error, "%s is already defined\n", varh[h].v);
-            die("double definition");
-        }
-        h = (h+1) % NVar;
-    } while(h != h0);
-    die("too many variables");
-}
-
-Symb * varget(char *v) {
-    static Symb s;
-    unsigned h0 = hash(v);
-    unsigned h = h0;
-    do {
-        if (strcmp(varh[h].v, v) == 0) {
-            if (!varh[h].glo) {
-                s.t = Var;
-                strcpy(s.u.v, v);
-            } else {
-                s.t = Glo;
-                s.u.n = varh[h].glo;
-            }
-            s.ctyp = varh[h].ctyp;
-            return &s;
-        }
-        h = (h+1) % NVar;
-    } while (h != h0 && varh[h].v[0] != 0);
-    return 0;
-}
-
-void ppCtype(unsigned long t) {
-    int n = 0, i;
-    while (t > 7) {
-        n++;
-        t = DREF(t);
-    }
-    switch (t) {
-        case T_VOID:
-            fprintf(stderr, "void ");
-            break;
-        case T_INT:
-            fprintf(stderr, "int ");
-            break;
-        case T_LONG:
-            fprintf(stderr, "long ");
-            break;
-        case T_DOUBLE:
-            fprintf(stderr, "double ");
-            break;
-        case T_FUN:
-            fprintf(stderr, "() ");
-            break;
-        default:
-            fprintf(stderr, "%lu", t);
-    }
-    for (i=0; i<n; i++) {
-        fprintf(stderr, "*");
-    }
-    return;
-}
-
-void PP(int level, char *msg, ...) {
-    if (level & gLevel) {
-        va_list args;
-        va_start(args, msg);
-        vfprintf(stderr, msg, args);
-        fprintf(stderr, "\n");
-        va_end(args);
-    }
-}
-
-void putq(char *src, ...) {
-    va_list args;
-    va_start(args, src);
-    vfprintf(of, src, args);
-    va_end(args);
-}

@@ -1,4 +1,4 @@
-#include "fred.h"
+#include "fred_mc.h"
 
 //int **newBoard();
 
@@ -6,7 +6,8 @@
 
 int Q;  int nSolutions;
 
-void print(int **board) {
+//void
+print(int **board) {
 	int i;  int j;
 	for (j=0; j<Q; j++) {
 		for (i=0; i<Q; i++)
@@ -19,7 +20,8 @@ void print(int **board) {
 	printf("\n");
 }
 
-int chk(int i, int j, int **board) {
+//int
+chk(int i, int j, int **board) {
 	int k;  int r;
 	for (r=k=0; k<Q; k++) {
 		r = r + board[i][k];
@@ -36,7 +38,8 @@ int chk(int i, int j, int **board) {
 	return r;
 }
 
-void go(int j, int **board) {
+//void
+go(int j, int **board) {
 	int i;
 	if (j == Q) {
 		print(board);
@@ -58,7 +61,8 @@ void go(int j, int **board) {
 //    return answer;
 //}
 
-int main(int ac, void **av) {
+//int
+main(int ac, void **av) {
 	int i;  int **board;  double a;
     a = 3;          // line comments work now
     a = a + 1;
