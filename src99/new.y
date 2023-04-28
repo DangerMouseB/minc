@@ -47,6 +47,7 @@
 
 
 
+
  *** NAMING CONVENTION ***
 
  TOKEN            (including T_TYPENAME_)
@@ -208,10 +209,6 @@ Node * mkparametertypelist(Node * start, Node * parameterdeclarationOrELLIPSIS, 
     return appendR(start, next);
 }
 
-Node * mktypequalifierlist(Node * start, Node * typequalifier, int lineno) {
-    Node * next = node(pt_type_qualifier_list, typequalifier, 0, lineno);
-    return appendR(start, next);
-}
 
 
 // QBE IR emission
@@ -725,43 +722,31 @@ void declareGlobal(int t, char* v) {
 
 
 void c99_declareGlobalVariable(Node *n) {
-    Node *ds, *dl, *id, *d;  unsigned int t;  // declaration specifiers, declarator list, init declarator, declaratn = {Node *} 0x15100a330 or, type
+    Node *tn, *dl, *id, *d;  unsigned int t;  // type node, declarator list, init declarator, declarator, type
     PP(parse, "c99_declareGlobalVariable\n");
     switch (n->op) {
         default:
             die("unhandled global declaration %s", optopp[n->op]);
         case pt_declaration:
-            // get the type
-            if ((ds=n->l)->op != pt_declaration_specifiers) die("parse error: tn->op != Type");
-            switch (ds->l->op) {
-                default:
-                    die("unhandled declaration specifiers->l->op %s", optopp[n->op]);
-                case pt_type_specifier:
-                    if ((t = ds->l->s.ctyp) == T_VOID) die("invalid void declaration @ %d", srclineno);
-                    break;
-                case pt_storage_class_specifier:
-                    // T_TYPEDEF, T_EXTERN, T_STATIC, T_AUTO,  T_REGISTER
-                case T_STRUCT:
-                case T_UNION:
-                case pt_type_qualifier:
-                    // CONST, T_RESTRICT, T_VOLATILE
-                case T_INLINE:
-                case T_PTR:
-                case T_ELLIPSIS:
-                    t = 0;
-                    die("unhandled declaration specifiers->l->op %s", optopp[n->op]);
-            }
-            // get the IDENTIFIERS
+//            pt_storage_class_specifier = T_TYPEDEF, T_EXTERN, T_STATIC, T_AUTO,  T_REGISTER
+//            pt_type_specifier = T_VOID, etc
+//            T_STRUCT
+//            T_UNION
+//            pt_type_qualifier = CONST, T_RESTRICT, T_VOLATILE
+//            T_INLINE
+//            T_PTR
+//            T_ELLIPSIS
+            if ((tn=n->l)->op != pt_declaration_specifiers) die("parse error: tn->op != Type");
+            if (tn->s.ctyp == T_VOID) die("invalid void declaration @ %d", srclineno);
             if ((dl=n->r)->op != pt_init_declarator_list) die("parse error: n->r->op != pt_init_declarator_list");
             do {
-                unsigned int specificT;
                 if ((id=dl->l)->op != pt_init_declarator) die("parse error: dl->l->op != pt_init_declarator");
                 if (id->r) die("nyi declarator '=' initializer");
                 if ((d=id->l)->op != pt_declarator) die("parse error: d->op != pt_declarator");
                 if (d->l) die("nyi pointer direct_declarator");
                 if ((d->r)->op != IDENT) die("nyi direct_declarator != IDENT");
-                specificT = t;     // OPEN: handle pointers
-                declareGlobal(specificT, d->r->s.u.v);
+                t = tn->s.ctyp;     // OPEN: handle pointers
+                declareGlobal(t, d->r->s.u.v);
                 dl = dl->r;         // next item in list
             } while (dl);
             break;
@@ -807,8 +792,7 @@ void c99_declareGlobalVariable(Node *n) {
 %type <n> storage_class_specifier function_specifier struct_or_union parameter_list direct_declarator translation_unit
 %type <n> external_declaration type_specifier parameter_declaration parameter_type_list direct_abstract_declarator
 %type <n> abstract_declarator init_declarator_list block_item argument_expression_list identifier_list
-%type <n> init_declarator
-%type <n> type_qualifier_list   // must be on a separate line
+%type <n> init_declarator, type_qualifier_list
 
 
 
@@ -995,7 +979,7 @@ storage_class_specifier
 
 type_specifier
 : VOID                                                  { PP(pt, "VOID   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_VOID, $%); }
-| CHAR                                                  { PP(pt, "CHAR   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_CHAR, $%); }
+| CHAR                                                  { $$ = mktype(pt_type_specifier, T_CHAR, $%); }
 | SHORT                                                 { $$ = mktype(pt_type_specifier, T_SHORT, $%); }
 | INT                                                   { PP(pt, "INT   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_INT, $%); }
 | LONG                                                  { $$ = mktype(pt_type_specifier, T_LONG, $%); }
@@ -1102,14 +1086,14 @@ direct_declarator
 
 pointer
 : '*'                                                   { PP(pt, "'*'   =>   pointer"); $$ = node(pt_pointer, mktype(T_PTR, 0, $%), 0, $%); }
-| '*' type_qualifier_list                               { PP(pt, "'*' type_qualifier_list   =>   pointer"); $$ = node(pt_pointer, mktype(T_PTR, $2, $%), 0, $%); }
-| '*' pointer                                           { PP(pt, "'*' pointer   =>   pointer"); $$ = node(pt_pointer, mktype(T_PTR, 0, $%), $2, $%); }
-| '*' type_qualifier_list pointer                       { PP(pt, "'*' type_qualifier_list pointer   =>   pointer"); $$ = node(pt_pointer, mktype(T_PTR, $2, $%), $3, $%); }
+| '*' type_qualifier_list                               { PP(pt, "'*' type_qualifier_list   =>   pointer"); $$ = node(pt_pointer, mktype(T_PTR, 0, $%), $2, $%); }
+| '*' pointer                                           { PP(pt, "'*' pointer   =>   pointer"); $$ = node(pt_pointer, mktype(T_PTR, 0, $%), $2 $%); }
+| '*' type_qualifier_list pointer                       { PP(pt, "'*' type_qualifier_list pointer   =>   pointer"); die("nyi"); }
 ;
 
 type_qualifier_list
-: type_qualifier                                        { PP(pt, "type_qualifier   =>   type_qualifier_list"); $$ = mktypequalifierlist(0, $1, $%); }
-| type_qualifier_list type_qualifier                    { PP(pt, "type_qualifier_list type_qualifier   =>   type_qualifier_list"); $$ = mktypequalifierlist($1, $2, $%); }
+: type_qualifier                                        { PP(pt, "type_qualifier   =>   type_qualifier_list"); }
+| type_qualifier_list type_qualifier                    { die("NYI @ %d", $%); }
 ;
 
 // parameter_type_list and parameter_list are really the same list of parameters

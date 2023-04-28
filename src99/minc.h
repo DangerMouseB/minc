@@ -28,7 +28,7 @@ enum op {
     OP_ERROR = 0,
 
     // types
-    Type        = _t+1,
+    T_TYPE_NAME = _t+1,
     T_TYPEDEF   = _t+2,
     T_EXTERN    = _t+3,
     T_STATIC    = _t+4,
@@ -142,6 +142,12 @@ enum op {
     pt_init_declarator_list     = _pt+8,
     pt_init_declarator          = _pt+9,
     pt_parameter_declaration    = _pt+10,
+    pt_declaration_specifiers   = _pt+11,
+    pt_type_specifier           = _pt+12,
+    pt_storage_class_specifier  = _pt+13,
+    pt_type_qualifier           = _pt+14,
+    pt_pointer                  = _pt+15,
+    pt_type_qualifier_list      = _pt+16,
 };
 
 
@@ -159,7 +165,7 @@ static char *optopp[] = {
         [If] = "If",                    [IfElse] = "IfElse",            [Else] = "Else",                [While] = "While",
         [Select] = "Select",            [Case] = "Case",                [Default] = "Default",          [Goto] = "Goto",
         [Continue] = "Continue",        [Break] = "Break",              [Ret] = "Ret",                  [Seq] = "Seq",
-        [Do] = "Do",                    [Type] = "Type",                [T_TYPEDEF] = "T_TYPEDEF",      [T_EXTERN] = "T_EXTERN",
+        [Do] = "Do",                    [T_TYPE_NAME] = "T_TYPE_NAME",  [T_TYPEDEF] = "T_TYPEDEF",      [T_EXTERN] = "T_EXTERN",
         [T_STATIC] = "T_STATIC",        [T_AUTO] = "T_AUTO",            [T_REGISTER] = "T_REGISTER",    [T_STRUCT] = "T_STRUCT",
         [T_UNION] = "T_UNION",          [T_CONST] = "T_CONST",          [T_RESTRICT] = "T_RESTRICT",    [T_VOLATILE] = "T_VOLATILE",
         [T_INLINE] = "T_INLINE",        [T_VOID] = "T_VOID",            [T_CHAR] = "T_CHAR",            [T_SHORT] = "T_SHORT",
@@ -171,6 +177,9 @@ static char *optopp[] = {
         [pt_declarator] = "pt_declarator",                              [pt_abstract_declarator] = "pt_abstract_declarator",
         [pt_identifier_list] = "pt_identifier_list",                    [pt_init_declarator_list] = "pt_init_declarator_list",
         [pt_init_declarator] = "pt_init_declarator",                    [pt_parameter_declaration] = "pt_parameter_declaration",
+        [pt_declaration_specifiers] = "pt_declaration_specifiers",      [pt_type_specifier] = "pt_type_specifier",
+        [pt_storage_class_specifier] = "pt_storage_class_specifier",    [pt_type_qualifier] = "pt_type_qualifier",
+        [pt_pointer] = "pt_pointer",                                    [pt_type_qualifier_list] = "pt_type_qualifier_list",
 };
 
 

@@ -1,6 +1,6 @@
 int Q;  int nSolutions;
 
-extern void *const go(int j, int **board) {
+extern const char *const *go(int j, int **board) {
     int i;
     if (j == Q) {
         print(board);
