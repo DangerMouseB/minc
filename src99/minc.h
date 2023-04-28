@@ -1,53 +1,15 @@
-//
-// Created by David on 24/04/2023.
-//
-
 #ifndef MINC_MINC_H
 #define MINC_MINC_H
 
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <stdalign.h>
+
 
 #define SEED_START 1
-
-enum {
-    NString = 32,
-};
-
-
-struct Symb {
-    enum {
-        Con,
-        Tmp,
-        Loc,
-        Glo,
-    } t;                    // 4
-    union {
-        int n;
-        char v[NString];
-        double d;
-    } u;                    // 4 | 32 | 8 = 32
-    unsigned long ctyp;     // 8
-};
-
-
-struct Node {               // 64 bytes
-    int op;                 // 4
-    struct Symb s;                 // 4 + 32 + 8
-    struct Node *l, *r;            // 8 + 8
-    int lineno;
-};
-
-
-struct TLLHead {
-    // OPEN: remove this by changing the logic that needed this to using node
-    int t;
-    struct TLLHead *r;
-};
-
-
-typedef struct Node Node;
-typedef struct Symb Symb;
-typedef struct TLLHead TLLHead;
-
 
 
 // C and QBE IR
@@ -62,6 +24,8 @@ typedef struct TLLHead TLLHead;
 #define _pt 255
 
 enum op {
+
+    OP_ERROR = 0,
 
     // types
     Type        = _t+1,
@@ -132,7 +96,7 @@ enum op {
 
 
     // access
-    NAME        = _ac+1,
+    IDENT        = _ac+1,
     OP_ATTR     = _ac+2,       // e.g. x.name
     OP_INDEX    = _ac+3,       // e.g. xs[0]
     OP_ADDR     = _ac+4,
@@ -167,17 +131,17 @@ enum op {
     Do          = _nvns+14,
 
 
-};
-
-
-// parse tree construction
-enum {
+    // parse tree construction
     func_def                    = _pt+1,
     pt_declaration              = _pt+2,
-    pt_parameter_list           = _pt+3,
+    pt_parameter_type_list      = _pt+3,
     pt_argument_expression_list = _pt+4,
     pt_declarator               = _pt+5,
     pt_abstract_declarator      = _pt+6,
+    pt_identifier_list          = _pt+7,
+    pt_init_declarator_list     = _pt+8,
+    pt_init_declarator          = _pt+9,
+    pt_parameter_declaration    = _pt+10,
 };
 
 
@@ -189,7 +153,7 @@ static char *optopp[] = {
         [OP_LSHIFT] = "OP_LSHIFT",      [OP_RSHIFT] = "OP_RSHIFT",      [OP_EQ] = "OP_EQ",              [OP_NE] = "OP_NE",
         [OP_LE] = "OP_LE",              [OP_LT] = "OP_LT",              [OP_AND] = "OP_AND",            [OP_OR] = "OP_OR",
         [OP_NOT] = "OP_NOT",            [OP_BAND] = "OP_BAND",          [OP_BOR] = "OP_BOR",            [OP_BINV] = "OP_BINV",
-        [OP_BXOR] = "OP_BXOR",          [OP_IIF] = "OP_IIF",            [NAME] = "NAME",                [OP_ATTR] = "OP_ATTR",
+        [OP_BXOR] = "OP_BXOR",          [OP_IIF] = "OP_IIF",            [IDENT] = "IDENT",                [OP_ATTR] = "OP_ATTR",
         [OP_INDEX] = "OP_INDEX",        [OP_ADDR] = "OP_ADDR",          [OP_DEREF] = "OP_DEREF",        [OP_INC] = "OP_INC",
         [OP_DEC] = "OP_DEC",            [OP_ASSIGN] = "OP_ASSIGN",      [OP_ADD_EQ] = "OP_ADD_EQ",      [OP_SUB_EQ] = "OP_SUB_EQ",
         [If] = "If",                    [IfElse] = "IfElse",            [Else] = "Else",                [While] = "While",
@@ -203,10 +167,58 @@ static char *optopp[] = {
         [T_SIGNED] = "T_SIGNED",        [T_UNSIGNED] = "T_UNSIGNED",    [T_BOOL] = "T_BOOL",            [T_COMPLEX] = "T_COMPLEX",
         [T_IMAGINARY] = "T_IMAGINARY",  [T_PTR] = "T_PTR",              [T_FUN] = "T_FUN",              [T_ELLIPSIS] = "T_ELLIPSIS",
         [func_def] = "func_def",                                        [pt_declaration] = "pt_declaration",
-        [pt_parameter_list] = "pt_parameter_list",                      [pt_argument_expression_list] = "pt_argument_expression_list",
+        [pt_parameter_type_list] = "pt_parameter_type_list",            [pt_argument_expression_list] = "pt_argument_expression_list",
         [pt_declarator] = "pt_declarator",                              [pt_abstract_declarator] = "pt_abstract_declarator",
+        [pt_identifier_list] = "pt_identifier_list",                    [pt_init_declarator_list] = "pt_init_declarator_list",
+        [pt_init_declarator] = "pt_init_declarator",                    [pt_parameter_declaration] = "pt_parameter_declaration",
 };
 
+
+struct Symb {
+    enum op ctyp;           // 4 (upto ***)
+    enum {
+        Con,
+        Tmp,
+        Loc,
+        Glo,
+    } t;                    // 4
+    union {
+        int n;
+        char *v;
+        double d;
+    } u;                    // 4 | 8 | 8 = 8
+};
+
+
+struct Node {               // 40 bytes
+    struct Symb s;          // 4 + 4 + 8
+    enum op op;             // 4
+    unsigned int lineno;    // 4
+    struct Node *l, *r;     // 8 + 8
+};
+
+
+struct TLLHead {
+    // OPEN: remove this by changing the logic that needed this to using node
+    int t;
+    struct TLLHead *r;
+};
+
+
+struct Arena {
+    void *first_chunk;      // 8
+    void *current_chunk;    // 8
+    void *next;             // 8
+    void *eoc;              // 8
+    void *last;             // 8
+    unsigned short nPages;  // 2
+};
+
+
+typedef struct Node Node;
+typedef struct Symb Symb;
+typedef struct TLLHead TLLHead;
+typedef struct Arena Arena;
 
 
 // logging
@@ -216,16 +228,17 @@ enum {
     emit =4,
     info = 8,
     error = 16,
-    pt = 32,
+    pt = 32,        // parse tree
     nyi = 64,
 };
-int g_logging_level;;
+int g_logging_level = info;     // OPEN: add filter as well as level?
 
 
 // housekeeping
 enum {
     NGlo = 256,
     NVar = 512,
+    NString = 32,
 };
 struct Variable {
     char v[NString];
@@ -236,7 +249,10 @@ struct Variable {
 int nglo;
 char srcFfn[1000];     // should be long enough for a filename
 char *globals[NGlo];
-struct Variable varh[NVar];
+struct Variable varh[NVar];     // hash table of variables - current locals and globals
+Arena strings;                  // literal strings
+Arena idents;                   // local identifiers
+Arena nodes;
 
 
 int tmp = SEED_START;           // seed for temporary variables in a function
@@ -247,18 +263,116 @@ FILE *of;
 FILE *inf;
 int srclineno;
 
+unsigned int PAGE_SIZE = 4096;
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// FORWARD DECLARATIONS
+// ---------------------------------------------------------------------------------------------------------------------
+
+void * alloc(size_t s);
+void PP(int level, char *msg, ...);
+void die(char *msg, ...);
+void *_nextChunk(Arena *a);
+void *_allocChunk(size_t size);
 
 
 // ---------------------------------------------------------------------------------------------------------------------
 // HELPERS
 // ---------------------------------------------------------------------------------------------------------------------
 
-void * alloc(size_t s);
-void PP(int level, char *msg, ...);
-void die(char *msg, ...);
+// arena is supposed to be fast on allocation and deallocation
+
+void * initArena(Arena *a, unsigned long chunkSize) {
+    a->first_chunk = NULL;
+    a->current_chunk = NULL;
+    a->next = NULL;
+    a->eoc = NULL;
+    a->nPages = chunkSize / PAGE_SIZE + (chunkSize % PAGE_SIZE > 0);
+    return _nextChunk(a);
+}
+
+void * allocInArena(Arena *a, unsigned int n, unsigned int align) {
+    void *p;
+    if (n > a->nPages * PAGE_SIZE - sizeof(void*)) return NULL;      // OPEN: store pLast as well as pNextChunk in header to remove this check
+    p = a->next + (align - ((unsigned long)a->next % align));
+    if ((p + n) > a->eoc) {
+        p = _nextChunk(a);
+        if (!p) return NULL;
+        p = a->next + (align - ((unsigned long)a->next % align));
+    }
+    a->last = p;
+    a->next = p + n;
+    return p;
+}
+
+void * reallocInArena(Arena *a, void* p, unsigned int n, unsigned int align) {
+    if (!p  || p != a->last) return allocInArena(a, n, align);
+    if (n > a->nPages * PAGE_SIZE - sizeof(void*)) return NULL;      // OPEN: store pLast as well as pNextChunk in header to remove this check
+    if ((p + n) > a->eoc) {
+        void *chunk = _nextChunk(a);
+        if (!chunk) return NULL;
+        p = a->next + (align - ((unsigned long)a->next % align));
+    }
+    a->last = p;
+    a->next = p + n;
+    return p;
+}
+
+void* _nextChunk(Arena *a) {
+    void *p;
+    if (!a->current_chunk) {
+        p = a->current_chunk = _allocChunk(a -> nPages * PAGE_SIZE);
+    } else {
+        p = *(void**)a->current_chunk;                      // get next chunk in list
+        if (!p) {
+            p = _allocChunk(a -> nPages * PAGE_SIZE);
+            if (!p) return NULL;
+            *(void**)a->current_chunk = p;                  // add this chunk to the list
+            a->current_chunk = p;
+        }
+    }
+    if (!a->first_chunk) a->first_chunk = a->current_chunk;
+    a->current_chunk = p;
+    a->next = p + sizeof(void*);
+    a->eoc = p + a->nPages * PAGE_SIZE - 1;
+}
+
+void *_allocChunk(size_t size) {
+    void *p = alloc(size);                              // OPEN: cache, page and set alignment options
+    if (!p) die("out of memory");
+    *(void * *)p = NULL;
+    return p;
+}
+
+void resetArena(Arena *a) {
+    a->current_chunk = a->first_chunk;
+    a->next = a->current_chunk + sizeof(void*);
+    a->eoc = a->current_chunk + a->nPages * PAGE_SIZE - 1;
+}
+
+void wipeChunks(Arena *a) {
+    die("freeChunks nyi");
+}
+
+void freeChunks(Arena *a) {
+    die("freeChunks nyi");
+}
+
+unsigned long numChunks(Arena *a) {
+    if (!a->first_chunk) return 0;
+    unsigned long n = 0;
+    void *p = a-> first_chunk;
+    do {
+        n++;
+        p = *(void **)p;
+    }
+    while (p);
+    return n;
+}
 
 Node * node(int op, Node *l, Node *r, int lineno) {
-    Node *n = alloc(sizeof *n);
+    Node *n = allocInArena(&nodes, sizeof *n, alignof n);
     n->op = op;
     n->l = l;
     n->r = r;
@@ -306,7 +420,6 @@ unsigned hash(char *s) {
 }
 
 void * alloc(size_t s) {
-    // OPEN: do a linked list of arenas - so can unwind more safely in Python
     void *p = malloc(s);
     if (!p) die("out of memory");
     return p;
@@ -327,6 +440,7 @@ void varclr() {
     for (unsigned h=0; h<NVar; h++)
         if (!varh[h].glo) varh[h].v[0] = 0;     // set first char to NULL
     tmp = SEED_START;
+    resetArena(&idents);
 }
 
 void varadd(char *v, int glo, unsigned ctyp) {

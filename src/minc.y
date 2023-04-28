@@ -50,7 +50,7 @@
  *** NAMING CONVENTION ***
 
  TOKEN            (including T_TYPENAM E_)
- OP_OPERATION     (e.g. OP_ADD, except NAME, LIT_INT, LIT_DEC, LIT_STR)
+ OP_OPERATION     (e.g. OP_ADD, except IDENT, LIT_INT, LIT_DEC, LIT_STR)
  T_TYPE
 
 
@@ -174,7 +174,7 @@ enum op {
 
 
     // access
-    NAME        = _ac+1,
+    IDENT        = _ac+1,
     OP_ATTR     = _ac+2,       // e.g. x.name
     OP_INDEX    = _ac+3,       // e.g. xs[0]
     OP_ADDR     = _ac+4,
@@ -594,7 +594,7 @@ Symb emitexpr(Node *n) {
             putq(" =w phi " LABEL "%d 1, " LABEL "%d 0\n", l, l+1);
             break;
 
-        case NAME:
+        case IDENT:
             s0 = lval(n);
             sr.ctyp = s0.ctyp;
             emitload(sr, s0);
@@ -713,7 +713,7 @@ Symb lval(Node *n) {
     switch (n->op) {
         default:
             die("invalid lvalue");
-        case NAME:
+        case IDENT:
             if (!varget(n->s.u.v)) {
                 PP(error, "%s is not defined\n", n->s.u.v);
                 die("undefined variable");
@@ -859,7 +859,7 @@ void c99_emitfunc(Node *ds, Node *d, Node *dl, Node* cs) {
     // declaration_specifiers declarator declaration_list compound_statement
     if ((ds->s.ctyp != T_INT) && (ds->s.ctyp != T_DOUBLE)) die("ds->s.ctyp != T_INT @ %d", __LINE__);
     if (d->op != pt_direct_declarator) die("d->op != pt_direct_declarator got %d @ %d", d->op, __LINE__);
-    if (d->l->op != NAME) die("d->l->op != NAME got %d @ %d", d->op, __LINE__);
+    if (d->l->op != IDENT) die("d->l->op != IDENT got %d @ %d", d->op, __LINE__);
     startFunc(ds->s.ctyp, d->l, d->r);
     finishFunc(cs);
     return;
@@ -1208,7 +1208,7 @@ int yylex() {
         for (i=0; kwds[i].s; i++)
             if (strcmp(v, kwds[i].s) == 0)
                 return kwds[i].t;
-        yylval.n = node(NAME, 0, 0);
+        yylval.n = node(IDENT, 0, 0);
         strcpy(yylval.n->s.u.v, v);
         PP(lex, "%s ", p);
         return IDENTIFIER;

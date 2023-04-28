@@ -753,15 +753,15 @@ stdump()
 
 enum {
 	TIdnt,
-	TTokchr, /* 'c' */
-	TPP, /* %% */
-	TLL, /* %{ */
-	TLangle, /* < */
-	TRangle, /* > */
-	TSemi, /* ; */
-	TBar, /* | */
-	TColon, /* : */
-	TLBrack, /* { */
+	TTokchr,    /* 'c' */
+	TPP,        /* %% */
+	TLL,        /* %{ */
+	TLangle,    /* < */
+	TRangle,    /* > */
+	TSemi,      /* ; */
+	TBar,       /* | */
+	TColon,     /* : */
+	TLBrack,    /* { */
 	TUnion,
 	TType,
 	TToken,
@@ -800,12 +800,19 @@ istok(int c)
 int
 nexttk()
 {
-	int n;
-	char c, *p;
-
-	while (isspace(c=fgetc(fin)))
-		if (c == '\n')
-			lineno++;
+	int n;  char c, *p;
+	while (isspace(c=fgetc(fin)) || c == '/') {
+        if (c == '/') {                 // DB
+            char c2 = fgetc(fin);
+            if (c2 == '/') {
+                while ((c = fgetc(fin)) != '\n') ;
+                lineno++;
+            } else
+                ungetc(c2, fin);
+        }
+        else if (c == '\n')
+            lineno++;
+    }
 	switch (c) {
 	case '<':
 		return TLangle;
@@ -1194,7 +1201,7 @@ actout(Rule *r)
 				fprintf(fout, ".%s", ty);
 			}
 		}
-        else if (c == '%') {
+        else if (c == '%') {            // DB
             fprintf(fout, "%d", i);
         }
 		else {

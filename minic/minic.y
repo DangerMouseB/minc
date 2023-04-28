@@ -644,7 +644,7 @@ mkfor(Node *ini, Node *tst, Node *inc, Stmt *s)
 
 %token <n> NUM
 %token <n> STR
-%token <n> IDENT
+%token <n> IDENTIFIER
 %token PP MM LE GE SIZEOF
 
 %token TVOID TINT TLNG
@@ -667,12 +667,12 @@ mkfor(Node *ini, Node *tst, Node *inc, Stmt *s)
 
 prog: func prog | fdcl prog | idcl prog | ;
 
-fdcl: type IDENT '(' ')' ';'
+fdcl: type IDENTIFIER '(' ')' ';'
 {
 	varadd($2->u.v, 1, FUNC($1));
 };
 
-idcl: type IDENT ';'
+idcl: type IDENTIFIER ';'
 {
 	if ($1 == NIL)
 		die("invalid void declaration");
@@ -696,7 +696,7 @@ func: init prot '{' dcls stmts '}'
 	fprintf(of, "}\n\n");
 };
 
-prot: IDENT '(' par0 ')'
+prot: IDENTIFIER '(' par0 ')'
 {
 	Symb *s;
 	Node *n;
@@ -730,12 +730,12 @@ prot: IDENT '(' par0 ')'
 par0: par1
     |                     { $$ = 0; }
     ;
-par1: type IDENT ',' par1 { $$ = param($2->u.v, $1, $4); }
-    | type IDENT          { $$ = param($2->u.v, $1, 0); }
+par1: type IDENTIFIER ',' par1 { $$ = param($2->u.v, $1, $4); }
+    | type IDENTIFIER          { $$ = param($2->u.v, $1, 0); }
     ;
 
 
-dcls: | dcls type IDENT ';'
+dcls: | dcls type IDENTIFIER ';'
 {
 	int s;
 	char *v;
@@ -800,10 +800,10 @@ pref: post
 
 post: NUM
     | STR
-    | IDENT
+    | IDENTIFIER
     | SIZEOF '(' type ')' { $$ = mknode('N', 0, 0); $$->u.n = SIZE($3); }
     | '(' expr ')'        { $$ = $2; }
-    | IDENT '(' arg0 ')'  { $$ = mknode('C', $1, $3); }
+    | IDENTIFIER '(' arg0 ')'  { $$ = mknode('C', $1, $3); }
     | post '[' expr ']'   { $$ = mkidx($1, $3); }
     | post PP             { $$ = mknode('P', $1, 0); }
     | post MM             { $$ = mknode('M', $1, 0); }
@@ -882,7 +882,7 @@ yylex()
 				return kwds[i].t;
 		yylval.n = mknode('V', 0, 0);
 		strcpy(yylval.n->u.v, v);
-		return IDENT;
+		return IDENTIFIER;
 	}
 
 	if (c == '"') {
