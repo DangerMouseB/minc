@@ -1,6 +1,6 @@
 int Q;  int nSolutions;
 
-     go(int j, int **board) {
+go(int j, int **board) {
     int i;
     if (j == Q) {
         print(board);

@@ -1,12 +1,8 @@
 #include "fred_mc.h"
-
-//int **newBoard();
-
 #define FMT_FLOAT "%f"
 
 int Q;  int nSolutions;
 
-//void
 print(int **board) {
 	int i;  int j;
 	for (j=0; j<Q; j++) {
@@ -20,7 +16,6 @@ print(int **board) {
 	printf("\n");
 }
 
-//int
 chk(int i, int j, int **board) {
 	int k;  int r;
 	for (r=k=0; k<Q; k++) {
@@ -38,7 +33,6 @@ chk(int i, int j, int **board) {
 	return r;
 }
 
-//void
 go(int j, int **board) {
 	int i;
 	if (j == Q) {
@@ -54,23 +48,14 @@ go(int j, int **board) {
 		}
 }
 
-
-//newBoard(int N) {
-//    void *answer;
-//    answer = calloc(N, sizeof(int *));
-//    return answer;
-//}
-
-//int
 main(int ac, void **av) {
 	int i;  int **board;  double a;
-    a = 3;          // line comments work now
+    a = 3;
     a = a + 1;
 
 	Q = 8;
 	if (ac >= 2)
 		Q = atoi(av[1]);
-//	board = newBoard(Q);
     board = calloc(Q, sizeof(int *));
 	for (i=0; i<Q; i++)
 		board[i] = calloc(Q, sizeof(int));

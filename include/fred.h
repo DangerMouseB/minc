@@ -1,10 +1,3 @@
-//int printf(const char * restrict, ...);
-//void *calloc();
-
-int printf(int*, ...);  // no char yet
-
-//int* fredjoe();
-//int* fredjoe2(...);
-//int* fredjoe3(int);
-//int* fredjoe4(int, ...);
-
+void *calloc(unsigned long nitems, unsigned long size)
+int printf(const char*, ...);
+int atoi(const char*);

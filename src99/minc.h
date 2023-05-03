@@ -9,25 +9,39 @@
 #include <stdalign.h>
 
 
-#define SEED_START 1
+#define SEED_START 0
 
 
 // C and QBE IR
 
+#define _mt 0
 #define _t 0
-#define _lvns _t+40         // if we can fit within 31 then we can have type flags for
-#define _ac _lvns+30
-#define _lvse _ac+10
-#define _nvse _lvse+10
-#define _nvns _nvse+10
+#define _expr _t+40
+#define _bin _expr+30
+#define _stmt _bin+20
 
-#define _pt 255
+#define _pt 256
+#define _ast 512
+#define INDENT "\t"
 
 enum op {
 
-    OP_ERROR = 0,
+    MISSING = 0,
 
-    // types
+    // machine types - would like to encode types so want these to fit into 5 bits, with const, register, volatile being bits 5, 6 & 7
+    T_U8 = _mt+1,
+    T_U16 = _mt+2,
+    T_U32 = _mt+3,
+    T_U64 = _mt+4,
+    T_I8 = _mt+5,
+    T_I16 = _mt+6,
+    T_I32 = _mt+7,
+    T_I64 = _mt+8,
+    T_F32 = _mt+9,
+    T_F64 = _mt+10,
+    T_F128 = _mt+11,     // ???
+
+    // c types
     T_TYPE_NAME = _t+1,
     T_TYPEDEF   = _t+2,
     T_EXTERN    = _t+3,
@@ -47,9 +61,10 @@ enum op {
     T_SHORT     = _t+15,
     T_INT       = _t+16,
     T_LONG      = _t+17,
+
     T_FLOAT     = _t+18,
     T_DOUBLE    = _t+19,
-    T_SIGNED    = _t+20,
+    T_SIGNED    = _t+20,        // OPEN: drop these and add uchar etc
     T_UNSIGNED  = _t+21,
     T_BOOL      = _t+22,
     T_COMPLEX   = _t+23,
@@ -60,75 +75,74 @@ enum op {
     T_ELLIPSIS  = _t+27,
 
 
-    // local value with no direct side effect
-    Expr        = _lvns+1,
+    // expressions
+    OP_EXPR_START = _expr,
+    LIT_INT     = _expr,
+    LIT_DEC     = _expr+1,
+    LIT_STR     = _expr+2,
+    LIT_BOOL    = _expr+3,
 
-    LIT_INT     = _lvns+2,
-    LIT_DEC     = _lvns+3,
-    LIT_STR     = _lvns+4,
-    LIT_BOOL    = _lvns+5,
+    OP_CALL     = _expr+4,
 
-    OP_CALL     = _lvns+6,
+    OP_IIF      = _expr+5,          // ? :
+    OP_TF       = _expr+6,          // ditto
+    OP_AND      = _expr+7,
+    OP_OR       = _expr+8,
 
-    OP_ADD      = _lvns+7,
-    OP_SUB      = _lvns+8,
-    OP_MUL      = _lvns+9,
-    OP_DIV      = _lvns+10,
-    OP_MOD      = _lvns+11,
-    OP_LSHIFT   = _lvns+12,
-    OP_RSHIFT   = _lvns+13,
+    OP_BINV     = _expr+9,          // ~ need to use xor
+    OP_NOT      = _expr+10,         // !
+    OP_ATTR     = _expr+11,         // e.g. x.name
+    OP_INDEX    = _expr+12,         // e.g. xs[0]
 
-    OP_EQ       = _lvns+14,
-    OP_NE       = _lvns+15,
-    OP_LE       = _lvns+16,
-    OP_LT       = _lvns+17,
+    IDENT       = _expr+13,
+    OP_ADDR     = _expr+14,         // &
+    OP_DEREF    = _expr+15,         // *
 
-    OP_AND      = _lvns+18,
-    OP_OR       = _lvns+19,
-    OP_NOT      = _lvns+20,
+    OP_INC      = _expr+16,
+    OP_DEC      = _expr+17,
+    OP_ASSIGN   = _expr+18,
+    OP_NEG      = _expr+19,         // -
 
-    OP_BAND     = _lvns+21,
-    OP_BOR      = _lvns+22,
-    OP_BINV     = _lvns+23,
-    OP_BXOR     = _lvns+24,
+    // base types - w is word, l is long, s is single, d is double
+    // extended types - b is byte, h is half word (for aggregate types and data defs)
+    // T is wlsd, I is wl, F is sd, m is pointer (on 64-bit architectures it is the same as l)
+    // simple binary expressions
+    OP_BIN_START = _bin,
+    OP_ADD      = _bin,             // addT
+    OP_SUB      = _bin+1,           // subT
+    OP_MUL      = _bin+2,           // mulT
+    OP_DIV      = _bin+3,           // divT, udivT
+    OP_MOD      = _bin+4,           // udivI, remI, uremI
+    OP_LSHIFT   = _bin+5,           // shlI
+    OP_RSHIFT   = _bin+6,           // sarI, shrI
 
-    OP_IIF      = _lvns+25,
+    OP_EQ       = _bin+7,           // ceqT
+    OP_NE       = _bin+8,           // cneT
+    OP_LE       = _bin+9,           // csleI, csgeI, culeI, cugeI, cleF, cgeF
+    OP_LT       = _bin+10,          // csltI, csgtI, cultI, cugtI, cltF, cgtF
 
-
-    // access
-    IDENT        = _ac+1,
-    OP_ATTR     = _ac+2,       // e.g. x.name
-    OP_INDEX    = _ac+3,       // e.g. xs[0]
-    OP_ADDR     = _ac+4,
-    OP_DEREF    = _ac+5,
-
-
-    // local value with direct side effect
-    OP_INC      = _lvse+1,
-    OP_DEC      = _lvse+2,
-
-
-    // no local value with direct side effect
-    OP_ASSIGN   = _nvse+1,
-    OP_ADD_EQ   = _nvse+2,
-    OP_SUB_EQ   = _nvse+3,
+    OP_BAND     = _bin+11,          // andI
+    OP_BOR      = _bin+12,          // orI
+    OP_BXOR     = _bin+13,          // xorI
+    OP_BIN_END  = OP_BXOR,
+    OP_EXPR_END = OP_BIN_END,
 
 
-    // no local value with no direct side effect
-    Label       = _nvns+1,
-    If          = _nvns+2,
-    IfElse      = _nvns+3,
-    Else        = _nvns+4,
-    While       = _nvns+5,      // for is implemented in terms of while
-    Select      = _nvns+6,
-    Case        = _nvns+7,
-    Default     = _nvns+8,
-    Goto        = _nvns+9,
-    Continue    = _nvns+10,
-    Break       = _nvns+11,
-    Ret         = _nvns+12,
-    Seq         = _nvns+13,
-    Do          = _nvns+14,
+    // statements
+    Label       = _stmt+1,
+    If          = _stmt+2,
+    IfElse      = _stmt+3,
+    Else        = _stmt+4,
+    While       = _stmt+5,          // for is implemented in terms of while
+    Select      = _stmt+6,
+    Case        = _stmt+7,
+    Default     = _stmt+8,
+    Goto        = _stmt+9,
+    Continue    = _stmt+10,
+    Break       = _stmt+11,
+    Ret         = _stmt+12,
+    Seq         = _stmt+13,
+    Do          = _stmt+14,
 
 
     // parse tree construction
@@ -148,20 +162,25 @@ enum op {
     pt_type_qualifier           = _pt+14,
     pt_pointer                  = _pt+15,
     pt_type_qualifier_list      = _pt+16,
+    pt_type_name                = _pt+17,
+
+    // ast??
+    ast_parameters              = _ast+1,
+
 };
 
 
 // PP nodes
 static char *optopp[] = {
-        [Expr] = "Expr",                [LIT_INT] = "LIT_INT",          [LIT_DEC] = "LIT_DEC",          [LIT_STR] = "LIT_STR",
-        [LIT_BOOL] = "LIT_BOOL",        [OP_CALL] = "OP_CALL",          [OP_ADD] = "OP_ADD",            [OP_SUB] = "OP_SUB",
-        [OP_MUL] = "OP_MUL",            [OP_DIV] = "OP_DIV",            [OP_MOD] = "OP_MOD",
-        [OP_LSHIFT] = "OP_LSHIFT",      [OP_RSHIFT] = "OP_RSHIFT",      [OP_EQ] = "OP_EQ",              [OP_NE] = "OP_NE",
-        [OP_LE] = "OP_LE",              [OP_LT] = "OP_LT",              [OP_AND] = "OP_AND",            [OP_OR] = "OP_OR",
-        [OP_NOT] = "OP_NOT",            [OP_BAND] = "OP_BAND",          [OP_BOR] = "OP_BOR",            [OP_BINV] = "OP_BINV",
-        [OP_BXOR] = "OP_BXOR",          [OP_IIF] = "OP_IIF",            [IDENT] = "IDENT",                [OP_ATTR] = "OP_ATTR",
-        [OP_INDEX] = "OP_INDEX",        [OP_ADDR] = "OP_ADDR",          [OP_DEREF] = "OP_DEREF",        [OP_INC] = "OP_INC",
-        [OP_DEC] = "OP_DEC",            [OP_ASSIGN] = "OP_ASSIGN",      [OP_ADD_EQ] = "OP_ADD_EQ",      [OP_SUB_EQ] = "OP_SUB_EQ",
+        [LIT_INT] = "LIT_INT",          [LIT_DEC] = "LIT_DEC",          [LIT_STR] = "LIT_STR",          [LIT_BOOL] = "LIT_BOOL",
+        [OP_CALL] = "OP_CALL",          [OP_ADD] = "OP_ADD",            [OP_SUB] = "OP_SUB",            [OP_MUL] = "OP_MUL",
+        [OP_DIV] = "OP_DIV",            [OP_MOD] = "OP_MOD",            [OP_LSHIFT] = "OP_LSHIFT",      [OP_RSHIFT] = "OP_RSHIFT",
+        [OP_EQ] = "OP_EQ",              [OP_NE] = "OP_NE",              [OP_LE] = "OP_LE",              [OP_LT] = "OP_LT",
+        [OP_AND] = "OP_AND",            [OP_OR] = "OP_OR",              [OP_NOT] = "OP_NOT",            [OP_BAND] = "OP_BAND",
+        [OP_BOR] = "OP_BOR",            [OP_BINV] = "OP_BINV",          [OP_BXOR] = "OP_BXOR",          [OP_IIF] = "OP_IIF",
+        [OP_TF] = "OP_TF",              [IDENT] = "IDENT",              [OP_ATTR] = "OP_ATTR",          [OP_INDEX] = "OP_INDEX",
+        [OP_ADDR] = "OP_ADDR",          [OP_DEREF] = "OP_DEREF",        [OP_INC] = "OP_INC",            [OP_DEC] = "OP_DEC",
+        [OP_ASSIGN] = "OP_ASSIGN",      [OP_NEG] = "OP_NEG",
         [If] = "If",                    [IfElse] = "IfElse",            [Else] = "Else",                [While] = "While",
         [Select] = "Select",            [Case] = "Case",                [Default] = "Default",          [Goto] = "Goto",
         [Continue] = "Continue",        [Break] = "Break",              [Ret] = "Ret",                  [Seq] = "Seq",
@@ -180,16 +199,17 @@ static char *optopp[] = {
         [pt_declaration_specifiers] = "pt_declaration_specifiers",      [pt_type_specifier] = "pt_type_specifier",
         [pt_storage_class_specifier] = "pt_storage_class_specifier",    [pt_type_qualifier] = "pt_type_qualifier",
         [pt_pointer] = "pt_pointer",                                    [pt_type_qualifier_list] = "pt_type_qualifier_list",
+        [pt_type_name] = "pt_type_name",
 };
 
 
 struct Symb {
     enum op ctyp;           // 4 (upto ***)
     enum {
-        Con,
-        Tmp,
-        Loc,
-        Glo,
+        Con,                // constant
+        Tmp,                // temporary
+        Loc,                // local - inc args
+        Glo,                // global
     } t;                    // 4
     union {
         int n;
@@ -199,11 +219,40 @@ struct Symb {
 };
 
 
+struct NameType {
+    char *name;             // 8
+    struct NameType *next;  // 8
+    enum op ctyp;           // 4
+};
+
+
+// hResult = disp(add2, PTR(s->l), COUNT(5), PTR(&res));
+
+
+// if op were 8 bytes we could use NaN boxing - but for the compiler unnecessary - however we could reuse the jones
+// runtime here
+// see https://peps.python.org/pep-3123/
+//struct TV {
+//    enum op t;
+//};
+
 struct Node {               // 40 bytes
-    struct Symb s;          // 4 + 4 + 8
+//    struct TV t;            // 4
     enum op op;             // 4
     unsigned int lineno;    // 4
+    struct Symb s;          // 4 + 4 + 8
     struct Node *l, *r;     // 8 + 8
+};
+
+//#define _t(o)    (((TV*)(o))->t)
+
+
+// https://learn.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=msvc-170
+// https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
+struct Func {
+    unsigned int attrs;     // 4  inline, __cdecl, __stdcall, __fastcall, __vectorcall, exported, etc
+    unsigned int rRet;      // 4
+    struct Node * tArgs;    // 8
 };
 
 
@@ -228,13 +277,14 @@ typedef struct Node Node;
 typedef struct Symb Symb;
 typedef struct TLLHead TLLHead;
 typedef struct Arena Arena;
+typedef struct NameType NameType;
 
 
 // logging
 enum {
     lex = 1,
     parse = 2,
-    emit =4,
+    emit = 4,
     info = 8,
     error = 16,
     pt = 32,        // parse tree
@@ -256,12 +306,14 @@ struct Variable {
 };
 
 int nglo;
-char srcFfn[1000];     // should be long enough for a filename
+char srcFfn[1000];              // should be long enough for a filename
 char *globals[NGlo];
 struct Variable varh[NVar];     // hash table of variables - current locals and globals
 Arena strings;                  // literal strings
 Arena idents;                   // local identifiers
 Arena nodes;
+Symb varBuf[1];
+char varnameBuf[NString];
 
 
 int tmp = SEED_START;           // seed for temporary variables in a function
@@ -345,12 +397,13 @@ void* _nextChunk(Arena *a) {
     a->current_chunk = p;
     a->next = p + sizeof(void*);
     a->eoc = p + a->nPages * PAGE_SIZE - 1;
+    return p;
 }
 
 void *_allocChunk(size_t size) {
     void *p = alloc(size);                              // OPEN: cache, page and set alignment options
     if (!p) die("out of memory");
-    *(void * *)p = NULL;
+    *(void**)p = NULL;
     return p;
 }
 
@@ -365,7 +418,13 @@ void wipeChunks(Arena *a) {
 }
 
 void freeChunks(Arena *a) {
-    die("freeChunks nyi");
+    void *current, *next;
+    current = a->first_chunk;
+    while (current) {
+        next = *(void**)current;
+        free(current);
+        current = next;
+    }
 }
 
 unsigned long numChunks(Arena *a) {
@@ -380,8 +439,16 @@ unsigned long numChunks(Arena *a) {
     return n;
 }
 
+void assertOp(Node *n, char* varname, enum op op, int lineno) {
+    if (n->op != op) die("%s->op != %s @ %d", varname, optopp[op], lineno);
+}
+
+void assertExists(void *p, char* varname, int lineno) {
+    if (!p) die("missing %s @ %d", varname, lineno);
+}
+
 Node * node(int op, Node *l, Node *r, int lineno) {
-    Node *n = allocInArena(&nodes, sizeof *n, alignof n);
+    Node *n = allocInArena(&nodes, sizeof *n, alignof (n));
     n->op = op;
     n->l = l;
     n->r = r;
@@ -472,20 +539,20 @@ void varadd(char *v, int glo, unsigned ctyp) {
 }
 
 Symb * varget(char *v) {
-    static Symb s;
     unsigned h0 = hash(v);
     unsigned h = h0;
     do {
         if (strcmp(varh[h].v, v) == 0) {
             if (!varh[h].glo) {
-                s.t = Loc;
-                strcpy(s.u.v, v);
+                varBuf->t = Loc;
+                strcpy(varnameBuf, v);
+                varBuf->u.v = varnameBuf;
             } else {
-                s.t = Glo;
-                s.u.n = varh[h].glo;
+                varBuf->t = Glo;
+                varBuf->u.n = varh[h].glo;
             }
-            s.ctyp = varh[h].ctyp;
-            return &s;
+            varBuf->ctyp = varh[h].ctyp;
+            return varBuf;
         }
         h = (h+1) % NVar;
     } while (h != h0 && varh[h].v[0] != 0);
