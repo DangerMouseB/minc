@@ -69,6 +69,15 @@ https://cdecl.org/
 
 
 
+ NEXT
+ use g_<name> for declared globals
+ use g<seed> for literal strings
+
+ store function definitions with their types -> check types on call AND insert ellipses properly
+ need a function struct
+
+ check emission conforms to minic
+
 */
 
 
@@ -84,11 +93,9 @@ https://cdecl.org/
 #include "minc.h"
 
 
-
-
 int yylex(void);
-void yyerror(char const *);
 
+void yyerror(char const *);
 
 
 #define GLOBAL  "$g"
@@ -97,10 +104,12 @@ void yyerror(char const *);
 #define LABEL   "@L"
 
 
-
 Symb emitexpr(Node *);
+
 Symb lval(Node *);
+
 void emitboolop(Node *, int, int);
+
 void emitLocalDecl(int t, char *varname);
 
 
@@ -120,6 +129,17 @@ unsigned int pointerise(unsigned int ctyp, Node *ptr) {
     return ctyp;
 }
 
+Node *nodepp(int op, Node *l, Node *r, int lineno, int level, char *msg, ...) {
+    if (level & g_logging_level) {
+        va_list args;
+        va_start(args, msg);
+        vfprintf(stderr, msg, args);
+        fprintf(stderr, "\n");
+        va_end(args);
+    }
+    return node(op, l, r, lineno);
+}
+
 Node * mkidx(Node *a, Node *i, int lineno) {
     Node *n = node(OP_ADD, a, i, lineno);
     n = node(OP_DEREF, n, 0, lineno);
@@ -136,7 +156,8 @@ Node * mkneg(Node *n, int lineno) {
 }
 
 Node * mkparam(char *v, unsigned ctyp, Node *others, int lineno) {
-    if (ctyp == T_VOID) die("invalid void declaration");
+    if (ctyp == T_VOID)
+        die("invalid void declaration");
     Node *n = node(0, 0, others, lineno);
     varadd(v, 0, ctyp);
     strcpy(n->s.u.v, v);
@@ -725,19 +746,14 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
 
 
 // declaration_specifiers, declarator, declaration_list, compound_statement
-void c99_emitfunc(Node *ds, Node *d, Node *dl, Node* cs) {
+void c99_emit_function_definition(Node *ds, Node *d, Node *dl, Node* cs) {
     NameType *params;  unsigned int t;
-    PP(emit, "c99_emitfunc");
+    PP(emit, "c99_emit_function_definition");
     assertOp(ds, "ds", pt_declaration_specifiers, __LINE__);
     assertOp(d, "d", pt_declarator, __LINE__);
     t = ds->l->s.ctyp;
     if ((t != T_INT) && (t != T_DOUBLE) && (t != T_VOID)) die("t == %s @ %d", optopp[t], __LINE__);
-    switch (d->r->op) {
-        case func_def:
-            break;
-        default:
-            die("got %d:%s @ %d", d->op, optopp[d->op], __LINE__);
-    }
+    assertOp(d->r, "d->r", func_def, __LINE__);
     assertExists(d->r->l, "d->r->l", __LINE__);
     assertOp(d->r->l, "d->r->l", IDENT, __LINE__);
     assertOp(d->r->r, "d->r->r", pt_parameter_type_list, __LINE__);
@@ -760,63 +776,59 @@ void emitLocalDecl(int t, char *varname) {
 
 
 void declareGlobal(int t, char* v) {
-    if (nglo == NGlo) die("too many string literals");
-    globals[nglo] = allocInArena(&strings, sizeof "{ x 0 }", 1);
-    sprintf(globals[nglo], "{ %c 0 }", irtyp(t));
-    varadd(v, nglo++, t);
+    if (oglo == NGlo) die("too many string literals");
+    globals[oglo] = allocInArena(&strings, sizeof "{ x 0 }", 1);
+    sprintf(globals[oglo], "{ %c 0 }", irtyp(t));
+    varadd(v, oglo++, t);
 }
 
 
-void c99_declareGlobalVariable(Node *n) {
-    // declaration specifiers, declarator list, init declarator, declarator
-    Node *ds, *idl, *id, *d;  unsigned int ctyp;  char *varname;
-    PP(parse, "c99_declareGlobalVariable\n");
-    switch (n->op) {
+// declaration
+void c99_emit_declaration(Node *n) {
+    // declaration_specifiers, init_declarator_list, init_declarator, declarator
+    Node *ds, *idl, *id, *d;  unsigned int ctyp;  char *name;  int hasVoid;
+    PP(parse, "c99_emit_declaration\n");
+    assertOp(n, "n", pt_declaration, __LINE__);
+    // get the common type
+    assertOp((ds=n->l), "n->l", pt_declaration_specifiers, __LINE__);
+    switch (ds->l->op) {
         default:
-            die("unhandled global declaration %s @ %d", optopp[n->op], n->lineno);
-        case pt_declaration:
-            // get the common type
-            assertOp((ds=n->l), "n->l", pt_declaration_specifiers, __LINE__);
-            switch (ds->l->op) {
-                default:
-                    die("unexpect op %s @ %d", optopp[n->op], __LINE__);
-                    return;
-                case pt_storage_class_specifier:
-                    // T_TYPEDEF, T_EXTERN, T_STATIC, T_AUTO, T_REGISTER
-                    die("unhandled declaration specifiers->l->op %s", optopp[n->op]);
-                    return;
-                case pt_type_specifier:
-                    ctyp = ds->l->s.ctyp;
-                    if (ctyp == T_VOID) die("invalid void declaration @ %d", srclineno);
-                    if ((ctyp == T_STRUCT) || (ctyp == T_STRUCT) || (ctyp == T_UNION) || (ctyp == T_TYPEDEF) || (ctyp == T_TYPE_NAME))
-                        die("nyi %s @ %d", optopp[n->op], __LINE__);
-                    break;
-                case pt_type_qualifier:
-                    // CONST, RESTRICT, VOLATILE
-                    die("nyi %s @ %d", optopp[n->op], __LINE__);
-                    return;
-                case T_INLINE:  // aka function_specifier
-                    // INLINE
-                    die("nyi %s @ %d", optopp[n->op], __LINE__);
-                    return;
-                return; // to prevent warnings
-            }
-            // process each declarator
-            assertOp((idl=n->r), "n->r", pt_init_declarator_list, __LINE__);
-            do {
-                assertOp((id=idl->l), "idl->l", pt_init_declarator, __LINE__);
-                if (id->r) die("nyi declarator '=' initializer");
-                if ((d=id->l)->op != pt_declarator) die("parse error: d->op != pt_declarator");
-                if (d->r->op == IDENT) {
-                    varname = d->r->s.u.v;
-                    declareGlobal(pointerise(ctyp, d->l), varname);
-                }
-                else
-                    PP(parse, "c99_declareGlobalVariable encountered %s @ %d", optopp[d->r->op], d->lineno);
-                idl = idl->r;
-            } while (idl);
+            die("unexpect op %s @ %d", optopp[n->op], __LINE__);
+            return;
+        case pt_storage_class_specifier:
+            // T_TYPEDEF, T_EXTERN, T_STATIC, T_AUTO, T_REGISTER
+            die("unhandled declaration specifiers->l->op %s", optopp[n->op]);
+            return;
+        case pt_type_specifier:
+            ctyp = ds->l->s.ctyp;
+            hasVoid = ctyp == T_VOID;
+            if ((ctyp == T_STRUCT) || (ctyp == T_STRUCT) || (ctyp == T_UNION) || (ctyp == T_TYPEDEF) || (ctyp == T_TYPE_NAME))
+                die("nyi %s @ %d", optopp[n->op], __LINE__);
             break;
+        case pt_type_qualifier:
+            // CONST, RESTRICT, VOLATILE
+            die("nyi %s @ %d", optopp[n->op], __LINE__);
+            return;
+        case T_INLINE:  // aka function_specifier
+            // INLINE
+            die("nyi %s @ %d", optopp[n->op], __LINE__);
+            return;
     }
+    // process each declarator
+    assertOp((idl=n->r), "n->r", pt_init_declarator_list, __LINE__);
+    do {
+        assertOp((id=idl->l), "idl->l", pt_init_declarator, __LINE__);
+        if (id->r) die("nyi declarator '=' initializer");
+        if ((d=id->l)->op != pt_declarator) die("programmer error: d->op != pt_declarator");
+        if (d->r->op == IDENT) {
+            name = d->r->s.u.v;
+            declareGlobal(pointerise(ctyp, d->l), name);
+        }
+        else
+            PP(parse, "c99_emit_declaration encountered %s @ %d", optopp[d->r->op], d->lineno);
+        idl = idl->r;
+    } while (idl);
+//    die("invalid void declaration @ %d", isrcline);
 }
  
 
@@ -872,14 +884,14 @@ primary_expression
 ;
 
 postfix_expression
-: primary_expression
-| postfix_expression '[' expression ']'                 { node(OP_INDEX, $1, $3, $%); }
+: primary_expression                                    { PP(pt, "primary_expression   =>   postfix_expression", $%); }
+| postfix_expression '[' expression ']'                 { $$ = nodepp(OP_INDEX, $1, $3, $%, pt, "postfix_expression '[' expression ']'   =>   postfix_expression"); }
 | postfix_expression '(' ')'                            { die("NYI @ %d", $%); }
-| postfix_expression '(' argument_expression_list ')'   { PP(pt, "postfix_expression '(' argument_expression_list ')'", $%); node(OP_CALL, $1, $3, $%); }
+| postfix_expression '(' argument_expression_list ')'   { $$ = nodepp(OP_CALL, $1, $3, $%, pt, "postfix_expression '(' argument_expression_list ')'   =>   postfix_expression"); }
 | postfix_expression '.' IDENTIFIER                     { die("NYI @ %d", $%); }
 | postfix_expression PTR_OP IDENTIFIER                  { die("NYI @ %d", $%); }
-| postfix_expression INC_OP                             { $$ = node(OP_INC, $1, 0, $%); }
-| postfix_expression DEC_OP                             { $$ = node(OP_DEC, $1, 0, $%); }
+| postfix_expression INC_OP                             { $$ = nodepp(OP_INC, $1, 0, $%, pt, "postfix_expression INC_OP   =>   postfix_expression"); }
+| postfix_expression DEC_OP                             { $$ = nodepp(OP_DEC, $1, 0, $%, pt, "postfix_expression DEC_OP   =>   postfix_expression"); }
 | '(' type_name ')' '{' initializer_list '}'            { die("NYI @ %d", $%); }
 | '(' type_name ')' '{' initializer_list ',' '}'        { die("NYI @ %d", $%); }
 ;
@@ -902,7 +914,7 @@ unary_operator
 : '&'                                                   { $$ = node(OP_ADDR, 0, 0, $%); }
 | '*'                                                   { $$ = node(OP_DEREF, 0, 0, $%); }
 | '+'                                                   { $$ = 0; }
-| '-'                                                   { $$ = node(OP_NEG, 0, 0, $%);  }
+| '-'                                                   { $$ = node(OP_NEG, 0, 0, $%); }
 | '~'                                                   { $$ = node(OP_BINV, 0, 0, $%); }
 | '!'                                                   { $$ = node(OP_NOT, 0, 0, $%); }
 ;
@@ -1031,7 +1043,7 @@ init_declarator_list
 
 init_declarator
 : declarator                                            { PP(pt, "declarator   =>   init_declarator"); $$ = node(pt_init_declarator, $1, 0, $%); }
-| declarator '=' initializer                            { die("NYI @ %d", $%); }
+| declarator '=' initializer                            { PP(pt, "declarator '=' initializer   =>   init_declarator"); $$ = node(pt_init_declarator, $1, $3, $%); }
 ;
 
 storage_class_specifier
@@ -1057,7 +1069,7 @@ type_specifier
 | IMAGINARY                                             { $$ = mktype(pt_type_specifier, T_IMAGINARY, $%); }
 | struct_or_union_specifier
 | enum_specifier
-| TYPE_NAME                                             { PP(pt, "#%s   =>   direct_declarator", $1->s.u.v); die("NYI @ %d", $%); }
+| TYPE_NAME                                             { PP(pt, "#%s   =>   type_specifier", $1->s.u.v); die("NYI @ %d", $%); }
 ;
 
 struct_or_union_specifier
@@ -1093,9 +1105,9 @@ struct_declarator_list
 ;
 
 struct_declarator
-: declarator                                            { PP(pt, "declarator   =>   struct_declarator"); }
-| ':' constant_expression                               { die("NYI @ %d", $%); }
-| declarator ':' constant_expression                    { die("NYI @ %d", $%); }
+: declarator                                            { die("declarator   =>   struct_declarator @ %d", $%); }
+| ':' constant_expression                               { die("':' constant_expression   =>   struct_declarator @ %d", $%); }
+| declarator ':' constant_expression                    { die("declarator ':' constant_expression   =>   struct_declarator @ %d", $%); }
 ;
 
 enum_specifier
@@ -1108,12 +1120,12 @@ enum_specifier
 
 enumerator_list
 : enumerator
-| enumerator_list ',' enumerator                        { die("NYI @ %d", $%); }
+| enumerator_list ',' enumerator                        { die("enumerator_list ',' enumerator   =>   enumerator_list @ %d", $%); }
 ;
 
 enumerator
-: IDENTIFIER                                            { die("NYI @ %d", $%); }
-| IDENTIFIER '=' constant_expression                    { die("NYI @ %d", $%); }
+: IDENTIFIER                                            { die("IDENTIFIER    =>   enumerator @ %d", $%); }
+| IDENTIFIER '=' constant_expression                    { die("IDENTIFIER '=' constant_expression    =>   enumerator @ %d", $%); }
 ;
 
 type_qualifier
@@ -1303,12 +1315,12 @@ translation_unit
 
 external_declaration
 : function_definition
-| declaration                                           { PP(pt, "declaration   =>   external_declaration"); c99_declareGlobalVariable($1); }
+| declaration                                           { PP(pt, "declaration   =>   external_declaration"); c99_emit_declaration($1); }
 ;
 
 function_definition
-: declaration_specifiers declarator declaration_list compound_statement     { PP(pt, "declaration_specifiers declarator declaration_list compound_statement   =>   function_definition"); c99_emitfunc($1, $2, $3, $4); }
-| declaration_specifiers declarator compound_statement                      { PP(pt, "declaration_specifiers declarator compound_statement   =>   function_definition"); c99_emitfunc($1, $2, 0, $3); }
+: declaration_specifiers declarator declaration_list compound_statement     { PP(pt, "declaration_specifiers declarator declaration_list compound_statement   =>   function_definition"); c99_emit_function_definition($1, $2, $3, $4); }
+| declaration_specifiers declarator compound_statement                      { PP(pt, "declaration_specifiers declarator compound_statement   =>   function_definition"); c99_emit_function_definition($1, $2, 0, $3); }
 ;
 
 declaration_list
@@ -1458,10 +1470,10 @@ int yylex() {
             }
         }
         strcpy(&p[i], "\", b 0 }");
-        if (nglo == NGlo) die("too many globals");
-        globals[nglo] = p;
+        if (oglo == NGlo) die("too many globals");
+        globals[oglo] = p;
         yylval.n = node(LIT_STR, 0, 0, __LINE__);
-        yylval.n->s.u.n = nglo++;
+        yylval.n->s.u.n = (oglo++) + SEED_START;
         PP(lex, "\"%s\" ", p);
         return STRING_LITERAL;
     }
@@ -1516,37 +1528,24 @@ int main(int argc, char*argv[]) {
             return EXIT_FAILURE;
         }
         inf = file;
+        strcpy(srcFfn, ffn);
     }
-    else
+    else {
         inf = stdin;
-
+        strcpy(srcFfn, "stdin");
+    }
     g_logging_level = parse | emit | error | pt | lex;
     of = stdout;
     initArena(&strings, 4096);
     initArena(&idents, 4096);
     initArena(&nodes, 4096);
-    nglo = 1;
-    if (yyparse() != 0)
-        die("parse error");
-    for (int i=1; i<nglo; i++)
-        putq("data " GLOBAL "%d = %s\n", i, globals[i]);
+    int ret = yyparse();
+    if (ret) die("parse error (%d)", ret);
+    for (int o=0; o<oglo; o++)
+        putq("data " GLOBAL "%d = %s\n", o + SEED_START, globals[o]);
     freeChunks(&strings);
     freeChunks(&idents);
     freeChunks(&nodes);
 
     return EXIT_SUCCESS;
 }
-
-
-
-
-// ---------------------------------------------------------------------------------------------------------------------
-// YACC HELPERS
-// ---------------------------------------------------------------------------------------------------------------------
-
-void yyerror(char const *err) {
-//    fflush(stdout);
-//    printf("\n%*s\n%*s\n", column, "^", column, s);
-    die("parse error from yyerror");
-}
-

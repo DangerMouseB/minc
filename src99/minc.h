@@ -305,7 +305,7 @@ struct Variable {
     int glo;
 };
 
-int nglo;
+int oglo;
 char srcFfn[1000];              // should be long enough for a filename
 char *globals[NGlo];
 struct Variable varh[NVar];     // hash table of variables - current locals and globals
@@ -322,7 +322,7 @@ int lbl = SEED_START;           // seed for labels
 
 FILE *of;
 FILE *inf;
-int srclineno;
+int isrcline = 1;
 
 unsigned int PAGE_SIZE = 4096;
 
@@ -482,12 +482,12 @@ Node * bindlr(Node *n, Node *l, Node *r, int lineno) {
     return n;
 }
 
-TLLHead * newTLLHead(int t, TLLHead *other) {
-    TLLHead *head = alloc(sizeof *head);
-    head->t = t;
-    if (other != NULL) head->r = other;
-    return head;
-}
+//TLLHead * newTLLHead(int t, TLLHead *other) {
+//    TLLHead *head = alloc(sizeof *head);
+//    head->t = t;
+//    if (other != NULL) head->r = other;
+//    return head;
+//}
 
 unsigned hash(char *s) {
     unsigned h = 42;
@@ -503,7 +503,7 @@ void * alloc(size_t s) {
 
 void die(char *msg, ...) {
     va_list args;
-    fprintf(stderr, "\nline <= %d: ", srclineno);
+    fprintf(stderr, "\nbefore end of line %d: ", isrcline);
     va_start(args, msg);
     vfprintf(stderr, msg, args);
     va_end(args);
@@ -619,13 +619,13 @@ void putq(char *src, ...) {
 
 void scanLineAndSrcFfn() {
     // https://stackoverflow.com/questions/24483075/input-using-sscanf-with-regular-expression instead of regex "(?<=\")(.*)(?=\")" instead
-    fscanf(inf, "%d", &srclineno);
+    fscanf(inf, "%d", &isrcline);
     fscanf(inf, "%%*[^\"]");
     fscanf(inf, "\"");
     fscanf(inf, "%[^\"]", srcFfn);
 }
 
-void incLine() {srclineno++;}
+void incLine() {isrcline++;}
 
 int reserve(int n) {int l = lbl; lbl += n; return l;}
 
