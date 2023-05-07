@@ -2,6 +2,8 @@
 #define AJ_H
 
 #include <stdlib.h>
+#include "util.h"
+
 #include "arena.h"
 #include "btype.h"
 

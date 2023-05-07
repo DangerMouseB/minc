@@ -13,16 +13,7 @@
 
 // C and QBE IR
 
-#define _mt 0
-#define _t 0
-#define _expr _t+40
-#define _bin _expr+30
-#define _stmt _bin+20
-
-#define _pt 256
-#define _ast 512
 #define INDENT "\t"
-
 
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -38,21 +29,16 @@ unsigned hash(char *s);
 // TOK
 // ---------------------------------------------------------------------------------------------------------------------
 
+#define _t 0
+#define _expr _t+40
+#define _bin _expr+30
+#define _stmt _bin+20
+#define _pt 256
+
 enum tok {
 
     MISSING = 0,
 
-    // machine types - would like to encode types so want these to fit into 5 bits, with const, register, volatile being bits 5, 6 & 7
-    T_U8 = _mt+1,
-    T_U16 = _mt+2,
-    T_U32 = _mt+3,
-    T_U64 = _mt+4,
-    T_I8 = _mt+5,
-    T_I16 = _mt+6,
-    T_I32 = _mt+7,
-    T_I64 = _mt+8,
-    T_F32 = _mt+9,
-    T_F64 = _mt+10,
 
     // type tokens
     T_TYPE_NAME = _t+1,
@@ -179,8 +165,6 @@ enum tok {
     pt_type_name                = _pt+17,
     pt_array                    = _pt+18,
 
-    // ast??
-    ast_parameters              = _ast+1,
 
 };
 

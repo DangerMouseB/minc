@@ -770,6 +770,14 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
     return start;
 }
 
+BTYPE_ID ptdeclarationspecifiersToBTypeId(Node *ds) {
+    // OPEN: convert tokens to the correct hardcoded btyp enum
+    BTYPE_ID t;
+    nyi("here");
+    t = ds->l->s.ctyp;
+    if ((t != T_INT) && (t != T_DOUBLE) && (t != T_VOID)) die("t == %s @ %d", toktopp[t], __LINE__);
+    return t;
+}
 
 // declaration_specifiers, declarator, declaration_list, compound_statement
 void c99_emit_function_definition(Node *ds, Node *d, Node *dl, Node* cs) {
@@ -777,8 +785,8 @@ void c99_emit_function_definition(Node *ds, Node *d, Node *dl, Node* cs) {
     PP(emit, "c99_emit_function_definition");
     assertOp(ds, "ds", pt_declaration_specifiers, __LINE__);
     assertOp(d, "d", pt_declarator, __LINE__);
-    t = ds->l->s.ctyp;
-    if ((t != T_INT) && (t != T_DOUBLE) && (t != T_VOID)) die("t == %s @ %d", toktopp[t], __LINE__);
+    t = ptdeclarationspecifiersToBTypeId(ds);
+    t = pointerise(t, d->l, 0);
     assertOp(d->r, "d->r", func_def, __LINE__);
     assertExists(d->r->l, "d->r->l", __LINE__);
     assertOp(d->r->l, "d->r->l", IDENT, __LINE__);
