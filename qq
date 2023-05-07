@@ -1,7 +1,7 @@
 #!/bin/sh
 
 DIR=`cd $(dirname $0); pwd`
-QBE=$DIR/_qbe
+QBE=$DIR/../qbe/qbe
 
 usage()
 {
@@ -32,7 +32,8 @@ fi
 
 file2="${file%.*}"
 $QBE < $file2.q > $file2.s &&
-cc -c $file2.s -o $file2.o
+cc $file2.s -o $file2 -lc
+#cc -c $file2.s -o $file2 -lc     # -c to compile an object fil
 #ar rcs libsally.a sally.o
 
 if test $? -ne 0

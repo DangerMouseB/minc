@@ -1,7 +1,7 @@
 #!/bin/sh
 
 DIR=`cd $(dirname $0); pwd`
-MMC=$DIR/_minc
+MCC=$DIR/_minc99
 
 usage()
 {
@@ -22,8 +22,8 @@ then
 fi
 
 file2="${file%.*}"
-cc -E $all -o $file2.p
-$MMC < $file2.p > $file2.q
+cc -E -I $DIR/include $all -o $file2.p
+$MCC < $file2.p > $file2.q
 
 if test $? -ne 0
 then

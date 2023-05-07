@@ -1,7 +1,7 @@
 #!/bin/sh
 
 DIR=`cd $(dirname $0); pwd`
-MMC99=$DIR/_minc99
+PCC=$DIR/../cproc/cproc-qbe
 
 usage()
 {
@@ -22,13 +22,11 @@ then
 fi
 
 file2="${file%.*}"
-cc -E $all -o $file2.p
-$MMC99 < $file2.p > $file2.q
+cc -E -I $DIR/include $all -o $file2.p
+$PCC < $file2.p > $file2.q
 
 if test $? -ne 0
 then
 #	echo "error processing file $file" >&2
 	exit 1
 fi
-
-

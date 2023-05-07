@@ -21,3 +21,17 @@ knight
 .idea/
 
 test_arena
+
+play/handcrafted
+
+play/libcrlf.a
+
+play/queen
+
+play/queen.q
+
+play/tmp
+
+play/tmp.q
+
+test_arena.dSYM/Contents/Info.plist

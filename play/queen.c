@@ -1,7 +1,9 @@
 #include "fred.h"
-#define FMT_FLOAT "%f"
+//#define FMT_FLOAT "%f"
 
-int Q;  int nSolutions;
+typedef char * cstar;
+
+static int Q,  nSolutions;
 
 void print(int **board) {
 	int i, j;
@@ -52,11 +54,11 @@ int **newBoard(int N) {
     int **answer, i;
     answer = calloc(N, sizeof(int *));
     for (i=0; i<N; i++)
-        board[i] = calloc(N, sizeof(int));
+        answer[i] = calloc(N, sizeof(int));
     return answer;
 }
 
-int main(int ac, char **av) {
+int main(int ac, cstar av[]) {
 	int **board;
 	Q = 8;
 	if (ac >= 2)

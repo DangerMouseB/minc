@@ -1,16 +1,9 @@
-int Q;  int nSolutions;
+int printf(const char*, ...);
 
-void go(int j, int **board) {
-    int i;
-    if (j == Q) {
-        print(board);
-        nSolutions++;
-        return;
-    }
-    for (i=0; i<Q; i++)
-        if (chk(i, j, board) == 0) {
-            board[i][j]++;
-            go(j+1, board);
-            board[i][j]--;
-        }
+int LF() {return 255 * 256 + 10;}
+
+int main(int argc, char*argv[]) {
+    printf("hello%c", LF());
+    return 0;
 }
+
