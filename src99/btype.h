@@ -6,6 +6,11 @@
 #define _hc1 0
 #define _hc2 20
 
+// OPEN: add aliases so can do - typedef can automatically add aliased
+//<:Symb> lval(<:Node&ptr> n) {
+//<:Symb> lval(<:pNode> n) {
+// could we do <:unsigned int>
+
 enum btyp{
     B_ILLEGAL = 0,          // to catch bugs
     B_U8  = _hc1+1,         // char, unsigned char
@@ -108,7 +113,7 @@ enum bexclusioncat {
 };
 
 struct BTypeManager {
-    char **txt_bySymId;                 // symtxts Arena
+    char **txt_bySymId;                 // strings Arena
     struct map *symid_byName;           // keys are pointers into symtxts Arena
     unsigned int *order_bySymId;
     char **name_byBTypeId;              // names are pointers into symtxts Arena
@@ -124,9 +129,9 @@ struct BTypeManager {
     struct BTMap *btmap_byDescId;
     struct BTFunc *btfnc_byDescId;
 
-    Arena typeLists;
-    Arena symtxts;
-    enum bexclusioncat *bexclusioncat_byBTypeId;
+    Arena intists;                      // null terminated lists of types and syms
+    Arena strings;                      // null terminated char* (utf8)
+    enum bexclusioncat *bexclusioncat_byBTypeId;    // this could also be done as a list of types per category which makes adding CCY etc easier
 };
 
 

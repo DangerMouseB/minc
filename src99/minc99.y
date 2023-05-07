@@ -572,6 +572,8 @@ Symb emitexpr(Node *n) {
 }
 
 
+//<:Symb> lval(<:Node&ptr> n) {
+//<:Symb> lval(<:pNode> n) {
 Symb lval(Node *n) {
     Symb sr;
     switch (n->tok) {
