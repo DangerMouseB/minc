@@ -27,6 +27,19 @@ void reportPassed() {
 
 
 int main(int argc, char*argv[]) {
+    int i;
+    i = 1;
+    for (int j=0; j < 5; j++) {
+        int i;
+        i = j;
+        fprintf(stdout, "%d ", i);
+    };
+    {
+        int i;
+        i = 5;
+        fprintf(stdout, "  %d ", i);
+    };
+    fprintf(stdout, "%d ", i);
     Arena a;
     ArenaState s;
     void *p = initArena(&a, 1);

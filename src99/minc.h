@@ -17,6 +17,66 @@
 
 
 // ---------------------------------------------------------------------------------------------------------------------
+// btyp enum
+// this just here to allow CLion to make life easier when debugging - eventually will replace with B_TYPE_ID
+// ---------------------------------------------------------------------------------------------------------------------
+
+#define _hc1 0
+#define _hc2 20
+
+enum btyp{
+    B_ILLEGAL = 0,          // to catch bugs
+    B_U8  = _hc1+1,         // char, unsigned char
+    B_U16 = _hc1+2,         // unsigned short
+    B_U32 = _hc1+3,         // signed int
+    B_U64 = _hc1+4,         // unsigned long, unsigned long int
+    B_I8  = _hc1+5,         // signed char
+    B_I16 = _hc1+6,         // short, signed short
+    B_I32 = _hc1+7,         // int, signed int
+    B_I64 = _hc1+8,         // long, long int, signed long, signed long int
+
+    B_F32 = _hc1+9,         // float
+    B_F64 = _hc1+10,        // double
+
+    B_CHARS = _hc1 + 11,    // null terminated uft-8 array, char*
+    B_N_CHARS = _hc1 + 12,  // N**chars, char*argv[], char**
+    B_TXT = _hc1+13,        // txt (length prefixed, null terminated uft-8 array)
+    B_NN_I32 = _hc1+14,     // int **, signed int **
+    B_N_I32 = _hc1+15,      // int *, signed int *
+    B_VOID_STAR = _hc1+16,
+
+    B_VOID = _hc2+1,
+    B_VARARGS = _hc2+2,
+    B_U8_S = _hc2+3,
+    B_N_MEM = _hc2+4,       // N**MEM, implemented as void **
+    B_PTR = 254,            // HACK
+    B_FN = 255,             // HACK
+};
+
+static char *btyptopp[] = {
+        [B_ILLEGAL] = "B_ILLEGAL",
+        [B_U8] = "B_U8",                [B_U16] = "B_U16",              [B_U32] = "B_U32",              [B_U64] = "B_U64",
+        [B_I8] = "B_I8",                [B_I16] = "B_I16",              [B_I32] = "B_I32",              [B_I64] = "B_I64",
+        [B_F32] = "B_F32",              [B_F64] = "B_F64",              [B_CHARS] = "B_CHARS",          [B_N_CHARS] = "B_N_CHARS",
+        [B_TXT] = "B_TXT",              [B_NN_I32] = "B_NN_I32",        [B_N_I32] = "B_N_I32",          [B_VOID_STAR] = "B_VOID_STAR",
+        [B_VOID] = "B_VOID",            [B_VARARGS] = "B_VARARGS",      [B_U8_S] = "B_U8_S",            [B_N_MEM] = "B_N_MEM",
+};
+
+// implementation defined (poss with compiler flags)
+#define B_CHAR_DEFAULT B_I8
+
+#define IDIR(t) (((t) << 8) + B_PTR)
+#define FUNC(t) (((t) << 8) + B_FN)
+#define DREF(t) ((t) >> 8)
+#define KIND(t) ((t) & 255)
+#define SIZE(t) (                                   \
+    t == T_VOID ? (die("void has no size"), 0) : (  \
+	t == B_I32 ? 4 : (                              \
+	8                                               \
+)))
+
+
+// ---------------------------------------------------------------------------------------------------------------------
 // FORWARD DECLARATIONS
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -70,12 +130,10 @@ enum tok {
     T_IMAGINARY = _t+24,
 
     T_PTR       = _t+25,
-    T_FUN       = _t+26,
-    T_ELLIPSIS  = _t+27,
+    T_ELLIPSIS  = _t+26,
 
 
     // expressions
-    OP_EXPR_START = _expr,
     LIT_CHAR    = _expr,            // e.g. '\n' OPEN: add these to lexer
     LIT_INT     = _expr+1,
     LIT_DEC     = _expr+2,
@@ -107,7 +165,6 @@ enum tok {
     // extended types - b is byte, h is half word (for aggregate types and data defs)
     // T is wlsd, I is wl, F is sd, m is pointer (on 64-bit architectures it is the same as l)
     // simple binary expressions
-    OP_BIN_START = _bin,
     OP_ADD      = _bin,             // addT
     OP_SUB      = _bin+1,           // subT
     OP_MUL      = _bin+2,           // mulT
@@ -124,8 +181,6 @@ enum tok {
     OP_BAND     = _bin+11,          // andI
     OP_BOR      = _bin+12,          // orI
     OP_BXOR     = _bin+13,          // xorI
-    OP_BIN_END  = OP_BXOR,
-    OP_EXPR_END = OP_BIN_END,
 
 
     // statements
@@ -164,14 +219,20 @@ enum tok {
     pt_type_qualifier_list      = _pt+16,
     pt_type_name                = _pt+17,
     pt_array                    = _pt+18,
-
+    pt_specifier_qualifier_list = _pt+19,
+    pt_function_specifier       = _pt+20,
 
 };
 
+#define OP_EXPR_START LIT_CHAR
+#define OP_EXPR_END OP_BIN_END
+#define OP_BIN_START OP_ADD
+#define OP_BIN_END OP_BXOR
 
 // PP nodes
 static char *toktopp[] = {
-        [LIT_INT] = "LIT_INT",          [LIT_DEC] = "LIT_DEC",          [LIT_STR] = "LIT_STR",          [LIT_BOOL] = "LIT_BOOL",
+        [LIT_CHAR] = "LIT_CHAR",        [LIT_INT] = "LIT_INT",          [LIT_DEC] = "LIT_DEC",          [LIT_STR] = "LIT_STR",
+        [LIT_BOOL] = "LIT_BOOL",
         [OP_CALL] = "OP_CALL",          [OP_ADD] = "OP_ADD",            [OP_SUB] = "OP_SUB",            [OP_MUL] = "OP_MUL",
         [OP_DIV] = "OP_DIV",            [OP_MOD] = "OP_MOD",            [OP_LSHIFT] = "OP_LSHIFT",      [OP_RSHIFT] = "OP_RSHIFT",
         [OP_EQ] = "OP_EQ",              [OP_NE] = "OP_NE",              [OP_LE] = "OP_LE",              [OP_LT] = "OP_LT",
@@ -189,7 +250,7 @@ static char *toktopp[] = {
         [T_INLINE] = "T_INLINE",        [T_VOID] = "T_VOID",            [T_CHAR] = "T_CHAR",            [T_SHORT] = "T_SHORT",
         [T_INT] = "T_INT",              [T_LONG] = "T_LONG",            [T_FLOAT] = "T_FLOAT",          [T_DOUBLE] = "T_DOUBLE",
         [T_SIGNED] = "T_SIGNED",        [T_UNSIGNED] = "T_UNSIGNED",    [T_BOOL] = "T_BOOL",            [T_COMPLEX] = "T_COMPLEX",
-        [T_IMAGINARY] = "T_IMAGINARY",  [T_PTR] = "T_PTR",              [T_FUN] = "T_FUN",              [T_ELLIPSIS] = "T_ELLIPSIS",
+        [T_IMAGINARY] = "T_IMAGINARY",  [T_PTR] = "T_PTR",              [T_ELLIPSIS] = "T_ELLIPSIS",
         [func_def] = "func_def",                                        [pt_declaration] = "pt_declaration",
         [pt_parameter_type_list] = "pt_parameter_type_list",            [pt_argument_expression_list] = "pt_argument_expression_list",
         [pt_declarator] = "pt_declarator",                              [pt_abstract_declarator] = "pt_abstract_declarator",
@@ -198,22 +259,22 @@ static char *toktopp[] = {
         [pt_declaration_specifiers] = "pt_declaration_specifiers",      [pt_type_specifier] = "pt_type_specifier",
         [pt_storage_class_specifier] = "pt_storage_class_specifier",    [pt_type_qualifier] = "pt_type_qualifier",
         [pt_pointer] = "pt_pointer",                                    [pt_type_qualifier_list] = "pt_type_qualifier_list",
-        [pt_type_name] = "pt_type_name",
+        [pt_type_name] = "pt_type_name",                                [pt_specifier_qualifier_list] = "pt_specifier_qualifier_list",
+        [pt_function_specifier] = "pt_function_specifier",
 };
 
 
 struct Symb {
-    enum tok ctyp;           // 4 (upto ***<type>)
+    enum btyp btyp;         // 4 (upto ***<type>)
     enum {
         Con,                // constant
         Tmp,                // temporary
-        Loc,                // local - inc args                                [pt_argument_expression_list] = "pt_argument_expression_list",
+        Var,                // variable
         Glo,                // global
     } t;                    // 4
     union {
         int n;
         char *v;
-//        Func *f;
         double d;
     } u;                    // 4 | 8 | 8 = 8
 };
@@ -222,7 +283,7 @@ struct Symb {
 struct NameType {
     char *name;             // 8
     struct NameType *next;  // 8
-    enum tok ctyp;           // 4
+    enum btyp btyp;           // 4
 };
 
 
@@ -255,14 +316,6 @@ struct Func {
     struct Node * tArgs;    // 8
 };
 
-
-//struct TLLHead {
-//    // OPEN: remove this by changing the logic that needed this to using node
-//    int t;
-//    struct TLLHead *r;
-//};
-
-
 typedef struct Node Node;
 typedef struct Symb Symb;
 typedef struct TLLHead TLLHead;
@@ -290,7 +343,7 @@ enum {
 };
 struct Variable {
     char v[NString];    //32
-    unsigned ctyp;
+    enum btyp btyp;
     int glo;
 };
 
@@ -321,14 +374,14 @@ void varclr() {
     resetToCheckpoint(&idents, &savedidents);
 }
 
-void varadd(char *v, int glo, unsigned ctyp) {
+void varadd(char *v, int glo, enum btyp btyp) {
     unsigned h0 = hash(v);
     unsigned h = h0;
     do {
         if (varh[h].v[0] == 0) {
             strcpy(varh[h].v, v);
             varh[h].glo = glo;
-            varh[h].ctyp = ctyp;
+            varh[h].btyp = btyp;
             return;
         }
         if (strcmp(varh[h].v, v) == 0) {
@@ -346,14 +399,14 @@ Symb * varget(char *v) {
     do {
         if (strcmp(varh[h].v, v) == 0) {
             if (!varh[h].glo) {
-                varBuf->t = Loc;
+                varBuf->t = Var;
                 strcpy(varnameBuf, v);
                 varBuf->u.v = varnameBuf;
             } else {
                 varBuf->t = Glo;
                 varBuf->u.n = varh[h].glo;
             }
-            varBuf->ctyp = varh[h].ctyp;
+            varBuf->btyp = varh[h].btyp;
             return varBuf;
         }
         h = (h+1) % NVar;
@@ -372,7 +425,7 @@ unsigned hash(char *s) {
     return h % NVar;
 }
 
-void assertOp(Node *n, char* varname, enum tok tok, int lineno) {
+void assertTok(Node *n, char* varname, enum tok tok, int lineno) {
     if (n->tok != tok) die("%s->tok != %s @ %d", varname, toktopp[tok], lineno);
 }
 
@@ -415,13 +468,6 @@ Node * bindlr(Node *n, Node *l, Node *r, int lineno) {
     return n;
 }
 
-//TLLHead * newTLLHead(int t, TLLHead *other) {
-//    TLLHead *head = alloc(sizeof *head);
-//    head->t = t;
-//    if (other != NULL) head->r = other;
-//    return head;
-//}
-
 void die_(char *preamble, char *msg, va_list args) {
     fprintf(stderr, "\nbefore end of line %d: ", isrcline);
     fprintf(stderr, "%s", preamble);
@@ -445,48 +491,6 @@ void nyi(char *msg, ...) {
     va_end(args);
 }
 
-#define IDIR(t) (((t) << 8) + T_PTR)
-#define FUNC(t) (((t) << 8) + T_FUN)
-#define DREF(t) ((t) >> 8)
-#define KIND(t) ((t) & 255)
-#define SIZE(t) (                                   \
-    t == T_VOID ? (die("void has no size"), 0) : (  \
-	t == T_INT ? 4 : (                              \
-	8                                               \
-)))
-
-void ppCtype(unsigned long t) {
-    int n = 0, i;
-    while (t > 7) {
-        n++;
-        t = DREF(t);
-    }
-    switch (t) {
-        case T_VOID:
-            fprintf(stderr, "void ");
-            break;
-        case T_INT:
-            fprintf(stderr, "int ");
-            break;
-        case T_LONG:
-            fprintf(stderr, "long ");
-            break;
-        case T_DOUBLE:
-            fprintf(stderr, "double ");
-            break;
-        case T_FUN:
-            fprintf(stderr, "() ");
-            break;
-        default:
-            fprintf(stderr, "%lu", t);
-            break;
-    }
-    for (i=0; i<n; i++) {
-        fprintf(stderr, "*");
-    }
-    return;
-}
-
 void PP(int level, char *msg, ...) {
     if (level & g_logging_level) {
         va_list args;
@@ -494,6 +498,16 @@ void PP(int level, char *msg, ...) {
         vfprintf(stderr, msg, args);
         fprintf(stderr, "\n");
         va_end(args);
+    }
+}
+
+void PPbtyp(int level, enum btyp t) {
+    if (level & g_logging_level) {
+        while (t && 0xFFFFFF00) {
+            fprintf(stderr, "*");
+            t >>= 8;
+        }
+        fprintf(stderr, btyptopp[t]);
     }
 }
 

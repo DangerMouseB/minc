@@ -78,6 +78,12 @@ https://cdecl.org/
 
  check emission conforms to minic
 
+
+
+ registers are 64bit
+ so tmps are 32 bit or 64 bit
+ only stucts need to be 8 bit etc and want them cache local - stack will be cache local
+
 */
 
 
@@ -99,8 +105,8 @@ void yyerror(char const *);
 
 
 #define GLOBAL  "$g"
-#define TEMP    "%%t"
-#define LOCAL   "%%_"
+#define TEMP    "%%."
+#define PVAR    "%%_"
 #define LABEL   "@L"
 
 
@@ -108,29 +114,170 @@ Symb emitexpr(Node *);
 
 Symb lval(Node *);
 
-void emitboolop(Node *, int, int);
 
-void emitLocalDecl(int t, char *varname);
+
+enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
+    // OPEN: convert tokens to the correct hardcoded btyp enum
+    enum tok op;  Node *n;  enum btyp baseType = B_ILLEGAL;  int hasSigned = 0;  int hasUnsigned = 0;  int hasConst = 0;
+    n = ds->l;
+    while (n) {
+        op = (enum tok) n->s.btyp;
+        switch (n->tok) {
+
+            case pt_storage_class_specifier:
+                nyi("pt_function_specifier");
+                break;
+
+            case pt_type_specifier:
+                switch (op) {
+                    default:
+                        die("op == %s @ %d", toktopp[op], __LINE__);
+                        // OPEN handle long int and long long, and signed and unsigned
+                    case T_VOID:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_VOID]);
+                        baseType = B_VOID;
+                        break;
+                    case T_CHAR:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_CHAR_DEFAULT]);
+                        baseType = B_CHAR_DEFAULT;
+                        break;
+                    case T_SHORT:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I16]);
+                        baseType = B_I16;
+                        break;
+                    case T_INT:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I32]);
+                        baseType = B_I32;
+                        break;
+                    case T_LONG:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I64]);
+                        baseType = B_I64;
+                        break;
+                    case T_FLOAT:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F32]);
+                        baseType = B_F32;
+                        break;
+                    case T_DOUBLE:
+                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F64]);
+                        baseType = B_F64;
+                        break;
+                    case T_UNSIGNED:
+                        if (hasUnsigned) die("unsigned already encountered before unsigned");
+                        if (hasSigned) die("signed already encountered before unsigned");
+                        hasUnsigned = 1;
+                        break;
+                    case T_SIGNED:
+                        if (hasUnsigned) die("unsigned already encountered before signed");
+                        if (hasSigned) die("signed already encountered before signed");
+                        hasSigned = 1;
+                        break;
+                }
+                break;
+
+            case pt_type_qualifier:
+                switch (op) {
+                    default:
+                        die("op == %s @ %d", toktopp[op], __LINE__);
+                    case T_CONST:
+                        if (hasConst) die("const already encountered");
+                        hasConst = 1;
+                        break;
+                }
+                break;
+
+            case pt_function_specifier:
+                nyi("pt_function_specifier");
+                break;
+
+            default:
+                die("here");
+
+        }
+        n = n->r;
+    }
+    if (hasSigned) {
+        switch (baseType) {
+            case B_CHAR_DEFAULT:
+                return baseType = B_I8;
+                break;
+            case B_I16:
+                baseType = B_I16;
+                break;
+            case B_ILLEGAL:
+            case B_I32:
+                baseType = B_I32;
+                break;
+            case B_I64:
+                baseType = B_I64;
+                break;
+            default:
+                die("illegal type - signed %s @ &d", toktopp[op], __LINE__);
+        }
+    }
+    if (hasUnsigned) {
+        switch (baseType) {
+            case B_CHAR_DEFAULT:
+                return baseType = B_U8;
+                break;
+            case B_I16:
+                baseType = B_U16;
+                break;
+            case B_ILLEGAL:
+            case B_U32:
+                baseType = B_U32;
+                break;
+            case B_U64:
+                baseType = B_U64;
+                break;
+            default:
+                die("illegal type - signed %s @ &d", toktopp[op], __LINE__);
+        }
+    }
+    if (hasConst) nyi("const");
+    return baseType;
+}
+
+char irtyp(enum btyp btyp) {
+    // OPEN: sort out ub, sb, uh, sb, b and h
+    switch (KIND(btyp)) {
+        case B_VOID: die("void has no size");
+        case B_I8:
+        case B_U8:
+        case B_I16:
+        case B_U16:
+        case B_I32:
+        case B_U32: return 'w';
+        case B_I64:
+        case B_U64:
+        case B_PTR:
+        case B_VOID_STAR:
+        case B_FN: return 'l';
+        case B_F32: return 's';
+        case B_F64: return 'd';
+    }
+    die("unhandled type %s @ %d", btyptopp[KIND(btyp)], __LINE__);
+    return 'l';
+}
 
 
 
 // Node construction
 
-unsigned int pointerise(unsigned int ctyp, Node *ptr, int isarray) {
+unsigned int pointerise(enum btyp btyp, Node *ptr, int isarray) {
     // OPEN check for const, volatile, restrict
     while (ptr) {
-        assertOp(ptr, "ptr", pt_pointer, __LINE__);
+        assertTok(ptr, "ptr", pt_pointer, __LINE__);
         if (ptr->l->tok == T_PTR) {
-            ctyp <<= 8;
-            ctyp |= T_PTR;
+            btyp <<= 8;
+            btyp |= B_PTR;
         }
         ptr = ptr->r;
     }
     if (isarray) {
-        ctyp <<= 8;
-        ctyp |= T_PTR;
+        btyp <<= 8;
+        btyp |= B_PTR;
     }
-    return ctyp;
+    return btyp;
 }
 
 Node *nodepp(int tok, Node *l, Node *r, int lineno, int level, char *msg, ...) {
@@ -159,20 +306,6 @@ Node * mkneg(Node *n, int lineno) {
     return node(OP_SUB, z, n, lineno);
 }
 
-Node * mkparam(char *v, unsigned ctyp, Node *others, int lineno) {
-    if (ctyp == T_VOID)
-        die("invalid void declaration");
-    Node *n = node(0, 0, others, lineno);
-    varadd(v, 0, ctyp);
-    strcpy(n->s.u.v, v);
-    return n;
-}
-
-// declaration_specifiers, declarator
-Node * c99_mkparam(Node *ds, Node *d, int lineno) {
-    return mkparam(d->s.u.v, ds->s.ctyp, 0, lineno);
-}
-
 Node * mkifelse(void *c, Node *t, Node *f, int lineno) {
     return node(IfElse, c, node(Else, t, f, lineno), lineno);
 }
@@ -199,18 +332,20 @@ Node * mkfor(Node *ini, Node *tst, Node *inc, Node *s, int lineno) {
         return s2;
 }
 
-Node * mkopassign(Node *n, Node *l, Node *r, int lineno) {
-    PP(parse, "mkopassign %d:%s\n", n->tok, toktopp[n->tok]);
-    if (n->l != 0) die("n->l != 0 @ %d", __LINE__);
-    if (n->r != 0) die("n->r != 0 @ %d", __LINE__);
-    n->l = l;
-    n->r = r;
-    return node(OP_ASSIGN, l, n, lineno);
+Node * mkopassign(Node *op, Node *l, Node *r, int lineno) {
+    if (op) {
+        if (op->l != 0) die("n->l != 0 @ %d", __LINE__);
+        if (op->r != 0) die("n->r != 0 @ %d", __LINE__);
+        op->l = l;
+        op->r = r;
+        r = op;
+    }
+    return node(OP_ASSIGN, l, r, lineno);
 }
 
-Node * mktype(int tok, enum tok t, int lineno) {
+Node * mktype(int tok, enum btyp t, int lineno) {
     Node * n = node(tok, 0, 0, lineno);
-    n->s.ctyp = t;
+    n->s.btyp = t;
     return n;
 }
 
@@ -246,21 +381,46 @@ Node * mktypequalifierlist(Node * start, Node * typequalifier, int lineno) {
     return appendR(start, next);
 }
 
+Node * mkspecifierqualifierlist(Node * start, Node * specifierqualifier, int lineno) {
+    Node * next = node(pt_specifier_qualifier_list, specifierqualifier, 0, lineno);
+    return appendR(start, next);
+}
+
 Node * mkargumentexpressionlist(Node * start, Node * expr, int lineno) {
     Node * next = node(pt_argument_expression_list, expr, 0, lineno);
     return appendR(start, next);
 }
 
+Node * mkinitdeclarator(Node *declarator, Node *initializer, int lineno) {
+    return node(pt_init_declarator, declarator, initializer, lineno);
+}
+
+
 
 // QBE IR emission
+
+void emitboolop(Node *, int, int);
+void emitLocalDecl(int t, char *varname);
+
+void i8_to_i16(Symb *s);
+void i8_to_i32(Symb *s);
+void i8_to_i64(Symb *s);
+void i16_to_i32(Symb *s);
+void i16_to_i64(Symb *s);
+void i32_to_i64(Symb *s);
+
+void i8_to_f64(Symb *s);
+void i16_to_f64(Symb *s);
+void i32_to_f64(Symb *s);
+void i64_to_f64(Symb *s);
 
 void emitsymb(Symb s) {
     switch (s.t) {
         case Tmp:
             putq(TEMP "%d", s.u.n);
             break;
-        case Loc:
-            putq(LOCAL "%s", s.u.v);
+        case Var:
+            putq(PVAR "%s", s.u.v);
             break;
         case Glo:
             putq(GLOBAL "%d", s.u.n);
@@ -271,114 +431,69 @@ void emitsymb(Symb s) {
     }
 }
 
-
-char irtyp(unsigned ctyp) {
-    switch (KIND(ctyp)) {
-        case T_VOID: die("void has no size");
-        case T_INT: return 'w';
-        case T_LONG: return 'l';
-        case T_DOUBLE: return 'd';
-        case T_PTR: return 'l';
-        case T_FUN: return 'l';
-    }
-    die("unhandled type %d @ %d", KIND(ctyp), __LINE__);
-    return 'l';
-}
-
-
-void l_extsw(Symb *s) {
-    putq(INDENT TEMP "%d =l extsw ", tmp);
-    emitsymb(*s);
-    putq("\n");
-    s->t = Tmp;
-    s->ctyp = T_LONG;
-    s->u.n = reserveTmp();
-}
-
-
-void d_swtof(Symb *s) {
-    putq(INDENT TEMP "%d =d swtof ", tmp);
-    emitsymb(*s);
-    putq("\n");
-    s->t = Tmp;
-    s->ctyp = T_DOUBLE;
-    s->u.n = reserveTmp();
-}
-
-
-void d_sltof(Symb *s) {
-    putq(INDENT TEMP "%d =d sltof ", tmp);
-    emitsymb(*s);
-    putq("\n");
-    s->t = Tmp;
-    s->ctyp = T_DOUBLE;
-    s->u.n = reserveTmp();
-}
-
-
-unsigned prom(int tok, Symb *l, Symb *r) {
+enum btyp prom(int tok, Symb *l, Symb *r) {
     Symb *t;
     int sz;
 
-    if (l->ctyp == r->ctyp && KIND(l->ctyp) != T_PTR)
-        return l->ctyp;
+    if (l->btyp == r->btyp && KIND(l->btyp) != B_PTR)
+        return l->btyp;
 
-    if (l->ctyp == T_LONG && r->ctyp == T_INT) {
-        l_extsw(r);
-        return T_LONG;
+    if (l->btyp == B_I64 && r->btyp == B_I32) {
+        i8_to_i32(r);
+        return B_I64;
     }
-    if (l->ctyp == T_INT && r->ctyp == T_LONG) {
-        l_extsw(l);
-        return T_LONG;
+    if (l->btyp == B_I32 && r->btyp == B_I64) {
+        i8_to_i32(l);
+        return B_I64;
     }
-    if (l->ctyp == T_DOUBLE && r->ctyp == T_INT) {
-        d_swtof(r);
-        return T_DOUBLE;
+    if (l->btyp == B_F64 && r->btyp == B_I32) {
+        i32_to_f64(r);
+        return B_F64;
     }
-    if (l->ctyp == T_DOUBLE && r->ctyp == T_LONG) {
-        d_sltof(r);
-        return T_DOUBLE;
+    if (l->btyp == B_F64 && r->btyp == B_I64) {
+        i64_to_f64(r);
+        return B_F64;
     }
 
     if (tok == OP_ADD) {
         // OPEN: handle double
-        if (KIND(r->ctyp) == T_PTR) {
+        if (KIND(r->btyp) == B_PTR) {
             t = l;
             l = r;
             r = t;
         }
-        if (KIND(r->ctyp) == T_PTR) die("pointers added");
+        if (KIND(r->btyp) == B_PTR) die("pointers added");
         goto Scale;
     }
 
     if (tok == OP_SUB) {
         // OPEN: handle double
-        if (KIND(l->ctyp) != T_PTR) die("pointer substracted from integer");
-        if (KIND(r->ctyp) != T_PTR) goto Scale;
-        if (l->ctyp != r->ctyp) die("non-homogeneous pointers in substraction");
-        return T_LONG;
+        if (KIND(l->btyp) != B_PTR) die("pointer substracted from integer");
+        if (KIND(r->btyp) != B_PTR) goto Scale;
+        if (l->btyp != r->btyp) die("non-homogeneous pointers in substraction");
+        return B_I64;
     }
 
 Scale:
     // OPEN: handle double
-    sz = SIZE(DREF(l->ctyp));
+    sz = SIZE(DREF(l->btyp));
     if (r->t == Con)
         r->u.n *= sz;
     else {
-        if (irtyp(r->ctyp) != 'l') l_extsw(r);
+        if (irtyp(r->btyp) != 'l') i8_to_i32(r);
         putq(INDENT TEMP "%d =l mul %d, ", tmp, sz);
         emitsymb(*r);
         putq("\n");
         r->u.n = reserveTmp();
     }
-    return l->ctyp;
+    return l->btyp;
 }
 
 
 void emitload(Symb d, Symb s) {
     putq(INDENT);
     emitsymb(d);
-    putq(" =%c load%c ", irtyp(d.ctyp), irtyp(d.ctyp));
+    putq(" =%c load%c ", irtyp(d.btyp), irtyp(d.btyp));
     emitsymb(s);
     putq("\n");
 }
@@ -391,20 +506,20 @@ void emitcall(Node *n, Symb *sr) {
     if (strcmp(f, "printf") == 0) iEllipses = 2;
     if (strcmp(f, "fprintf") == 0) iEllipses = 3;
     if (varget(f)) {
-        ft = varget(f)->ctyp;
-        if (KIND(ft) != T_FUN) die("invalid call");
+        ft = varget(f)->btyp;
+        if (KIND(ft) != B_FN) die("invalid call");
     } else
-        ft = FUNC(T_INT);
-    sr->ctyp = DREF(ft);
+        die("undeclared function %s", f);
+    sr->btyp = DREF(ft);
     for (a=n->r; a; a=a->r)
         a->s = emitexpr(a->l);
     putq(INDENT);
     emitsymb(*sr);
-    putq(" =%c call $%s(", irtyp(sr->ctyp), f);
+    putq(" =%c call $%s(", irtyp(sr->btyp), f);
     a = n->r; iArg = 1;
     while (a) {
         if (iArg == iEllipses) putq("..., ");
-        putq("%c ", irtyp(a->s.ctyp));
+        putq("%c ", irtyp(a->s.btyp));
         emitsymb(a->s);
         a = a->r;
         if (a) putq(", ");
@@ -428,8 +543,9 @@ Symb emitexpr(Node *n) {
             [OP_EQ] = "ceq",
             [OP_NE] = "cne",
     };
-    Symb sr, s0, s1, sl;
-    int o, l;
+    Symb sr, s0, s1, st;
+    enum tok o;
+    int l;
     char ty[2];
 
     sr.t = Tmp;
@@ -448,33 +564,39 @@ Symb emitexpr(Node *n) {
             putq(INDENT "jmp " LABEL "%d\n", l+2);
             putq(LABEL "%d\n", l+2);
             putq(INDENT);
-            sr.ctyp = T_INT;
+            sr.btyp = B_I32;
             emitsymb(sr);
             putq(" =w phi " LABEL "%d 1, " LABEL "%d 0\n", l, l+1);
             break;
 
         case IDENT:
             s0 = lval(n);
-            sr.ctyp = s0.ctyp;
+            sr.btyp = s0.btyp;
             emitload(sr, s0);
             break;
 
         case LIT_DEC:
             sr.t = Con;
             sr.u.d = n->s.u.d;
-            sr.ctyp = T_DOUBLE;
+            sr.btyp = B_F64;
             break;
 
         case LIT_INT:
             sr.t = Con;
             sr.u.n = n->s.u.n;
-            sr.ctyp = T_INT;
+            sr.btyp = B_I32;
+            break;
+
+        case LIT_CHAR:
+            sr.t = Con;
+            sr.u.n = n->s.u.n;
+            sr.btyp = B_CHAR_DEFAULT;
             break;
 
         case LIT_STR:
             sr.t = Glo;
             sr.u.n = n->s.u.n;
-            sr.ctyp = IDIR(T_INT);
+            sr.btyp = IDIR(T_INT);   // OPEN ????
             break;
 
         case OP_CALL:
@@ -483,50 +605,55 @@ Symb emitexpr(Node *n) {
 
         case OP_DEREF:
             s0 = emitexpr(n->l);
-            if (KIND(s0.ctyp) != T_PTR)
+            if (KIND(s0.btyp) != B_PTR)
                 die("dereference of a non-pointer");
-            sr.ctyp = DREF(s0.ctyp);
+            sr.btyp = DREF(s0.btyp);
             emitload(sr, s0);
             break;
 
         case OP_ADDR:
             sr = lval(n->l);
-            sr.ctyp = IDIR(sr.ctyp);
+            sr.btyp = IDIR(sr.btyp);
             break;
 
         case OP_ASSIGN:
+            // y = x  => store x, y  => store s0, s1
             s0 = emitexpr(n->r);
-            s1 = lval(n->l);
+            s1 = lval(n->l);        // always a pointer,
             sr = s0;
-            if (s1.ctyp == T_LONG && s0.ctyp == T_INT) l_extsw(&s0);
-            if (s1.ctyp == T_DOUBLE && s0.ctyp == T_INT) d_swtof(&s0);
-            if (s1.ctyp == T_DOUBLE && s0.ctyp == T_LONG) d_sltof(&s0);
-            if (s0.ctyp != IDIR(T_VOID) || KIND(s1.ctyp) != T_PTR)
-                if (s1.ctyp != IDIR(T_VOID) || KIND(s0.ctyp) != T_PTR)
-                    if (s1.ctyp != s0.ctyp) {
-                        ppCtype(s1.ctyp);
-                        PP(emit, "%s = ", s1.u.v);
-                        ppCtype(s0.ctyp);
-                        PP(emit, "\n");
-                        die("invalid assignment");
-                    }
-            putq(INDENT "store%c ", irtyp(s1.ctyp));
-            goto Args;
+            if (s1.btyp == B_I16 && s0.btyp == B_I8)  i8_to_i16(&s0);
+            if (s1.btyp == B_I32 && s0.btyp == B_I8)  i8_to_i32(&s0);
+            if (s1.btyp == B_I64 && s0.btyp == B_I8)  i8_to_i64(&s0);
+            if (s1.btyp == B_I32 && s0.btyp == B_I16) i16_to_i32(&s0);
+            if (s1.btyp == B_I64 && s0.btyp == B_I16) i16_to_i64(&s0);
+            if (s1.btyp == B_I64 && s0.btyp == B_I32) i32_to_i64(&s0);
+
+            if (s1.btyp == B_F64 && s0.btyp == B_I8) i8_to_f64(&s0);
+            if (s1.btyp == B_F64 && s0.btyp == B_I16) i16_to_f64(&s0);
+            if (s1.btyp == B_F64 && s0.btyp == B_I32) i32_to_f64(&s0);
+            if (s1.btyp == B_F64 && s0.btyp == B_I64) i64_to_f64(&s0);
+
+            if (s0.btyp != IDIR(B_VOID) || KIND(s1.btyp) != B_PTR)
+                if (s1.btyp != IDIR(B_VOID) || KIND(s0.btyp) != B_PTR)
+                    if (s1.btyp != s0.btyp) die("invalid assignment");
+            putq(INDENT "store%c ", irtyp(s1.btyp));
+            goto emit_s0_s1;
 
         case OP_INC:
         case OP_DEC:
-            o = n->tok == OP_INC ? OP_ADD : OP_SUB;
-            sl = lval(n->l);
+            o = n->tok == OP_INC ? OP_ADD : OP_SUB;    // e.g. x += 1  => x = x + 1
+            st = lval(n->l);
             s0.t = Tmp;
             s0.u.n = reserveTmp();
-            s0.ctyp = sl.ctyp;
-            emitload(s0, sl);
+            s0.btyp = st.btyp;
+            emitload(s0, st);
             s1.t = Con;
             s1.u.n = 1;
-            s1.ctyp = T_INT;
-            goto Binop;
+            s1.btyp = st.btyp;
+            goto binop;
 
         default:
+            // handle all the binary ops
             if ((OP_BIN_START <= n->tok) && (n->tok <= OP_BIN_END)) {
                 s0 = emitexpr(n->l);
                 s1 = emitexpr(n->r);
@@ -536,35 +663,36 @@ Symb emitexpr(Node *n) {
                 die("%s is not an expression", toktopp[n->tok]);
                 return sr;
             }
-        Binop:
-            sr.ctyp = prom(o, &s0, &s1);
+        binop:
+            // t = op s0 s1
+            sr.btyp = prom(o, &s0, &s1);
             if (strchr(neltl, n->tok)) {
-                sprintf(ty, "%c", irtyp(sr.ctyp));
-                sr.ctyp = T_INT;
+                sprintf(ty, "%c", irtyp(sr.btyp));
+                sr.btyp = B_I32;            // OPEN: should be a B_BOOL
             } else
                 strcpy(ty, "");
             putq(INDENT);
             emitsymb(sr);
-            putq(" =%c", irtyp(sr.ctyp));
+            putq(" =%c", irtyp(sr.btyp));
             putq(" %s%s ", otoa[o], ty);
-        Args:
+        emit_s0_s1:
             emitsymb(s0);
             putq(", ");
             emitsymb(s1);
             putq("\n");
             break;
     }
-    if (n->tok == OP_SUB  &&  KIND(s0.ctyp) == T_PTR  &&  KIND(s1.ctyp) == T_PTR) {
+    if (n->tok == OP_SUB  &&  KIND(s0.btyp) == B_PTR  &&  KIND(s1.btyp) == B_PTR) {
         putq(INDENT TEMP "%d =l div ", tmp);
         emitsymb(sr);
-        putq(", %d\n", SIZE(DREF(s0.ctyp)));
+        putq(", %d\n", SIZE(DREF(s0.btyp)));
         sr.u.n = reserveTmp();
     }
     if (n->tok == OP_INC  ||  n->tok == OP_DEC) {
-        putq(INDENT "store%c ", irtyp(sl.ctyp));
+        putq(INDENT "store%c ", irtyp(st.btyp));
         emitsymb(sr);
         putq(", ");
-        emitsymb(sl);
+        emitsymb(st);
         putq("\n");
         sr = s0;
     }
@@ -575,7 +703,7 @@ Symb emitexpr(Node *n) {
 //<:Symb> lval(<:Node&ptr> n) {
 //<:Symb> lval(<:pNode> n) {
 Symb lval(Node *n) {
-    Symb sr;
+    Symb s;
     switch (n->tok) {
         default:
             die("invalid lvalue");
@@ -584,15 +712,15 @@ Symb lval(Node *n) {
                 PP(error, "%s is not defined\n", n->s.u.v);
                 die("undefined variable");
             }
-            sr = *varget(n->s.u.v);
+            s = *varget(n->s.u.v);
             break;
         case OP_DEREF:
-            sr = emitexpr(n->l);
-            if (KIND(sr.ctyp) != T_PTR) die("dereference of a non-pointer");
-            sr.ctyp = DREF(sr.ctyp);
+            s = emitexpr(n->l);
+            if (KIND(s.btyp) != B_PTR) die("dereference of a non-pointer");
+            s.btyp = DREF(s.btyp);
             break;
     }
-    return sr;
+    return s;
 }
 
 
@@ -622,20 +750,33 @@ void emitboolop(Node *n, int lt, int lf) {
 
 
 int emitstmt(Node *s, int b) {
-    int l, r;  Symb x;  unsigned int ctyp;  char *varname;
+    int l, r;  Symb x;  enum btyp t;  char *varname;  Node *ds, *idl, *id, *d, *ini;
 
     if (!s) return 0;
     PP(emit, "%s", toktopp[s->tok]);
 
     switch (s->tok) {
         case pt_declaration:
-            assertOp(s, "s", pt_declaration, __LINE__);
-            assertOp(s->l, "s->l", pt_declaration_specifiers, __LINE__);
-            assertOp(s->l->l, "s->l->l", pt_type_specifier, __LINE__);
-            ctyp = s->l->l->s.ctyp;
-            ctyp = pointerise(ctyp, s->l->r, 0);
-            varname = s->r->l->l->r->s.u.v;
-            emitLocalDecl(ctyp, varname);
+            assertTok(s, "s", pt_declaration, __LINE__);
+            assertExists(ds=s->l, "s->l", __LINE__);
+            assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
+            t = ptdeclarationspecifiersToBTypeId(ds);
+            idl = s->r;
+            while (idl) {
+                assertTok(idl, "idl", pt_init_declarator_list, __LINE__);
+                assertExists(id=idl->l, "id", __LINE__);
+                assertTok(id, "id", pt_init_declarator, __LINE__);
+                assertExists(d=id->l, "d", __LINE__);
+                assertTok(d, "d", pt_declarator, __LINE__);
+                assertExists(d->r, "d->r", __LINE__);
+                assertTok(d->r, "d->r", IDENT, __LINE__);
+                varname = d->r->s.u.v;
+                emitLocalDecl(pointerise(t, d->l, 0), varname);
+                if (ini=id->r) {
+                    emitexpr(node(OP_ASSIGN, d->r, ini, __LINE__));
+                }
+                idl = idl->r;
+            }
             return 0;
         case Ret:
             PP(emit, "Ret");
@@ -699,30 +840,30 @@ int emitstmt(Node *s, int b) {
 }
 
 
-void startFunc(unsigned long t, char *fnname, NameType *params) {
+void startFunc(enum btyp t, char *fnname, NameType *params) {
     NameType *p;  int i, m;
     PP(emit, "startFunc: %s", fnname);
 
     varadd(fnname, 1, FUNC(t));
-    if (t == T_VOID)
+    if (t == B_VOID)
         putq("export function $%s(", fnname);
     else
         putq("export function %c $%s(", irtyp(t), fnname);
     if ((p=params))
         do {
-            varadd(p->name, 0, p->ctyp);
-            putq("%c ", irtyp(p->ctyp));
+            varadd(p->name, 0, p->btyp);
+            putq("%c ", irtyp(p->btyp));
             putq(TEMP "%d", reserveTmp());
             p = p->next;
             if (p) putq(", ");
         } while (p);
     putq(") {\n");
-    putq(LABEL "%d\n", reserve(1));
+    putq(LABEL "%d\n", reserve(1));                         // make start.1
     for (i=SEED_START, p=params; p; i++, p=p->next) {
-        m = SIZE(p->ctyp);
-        putq(INDENT LOCAL "%s =l alloc%d %d\n", p->name, m, m);
-        putq(INDENT "store%c " TEMP "%d", irtyp(p->ctyp), i);
-        putq(", " LOCAL "%s\n", p->name);
+        m = SIZE(p->btyp);
+        putq(INDENT PVAR "%s =l alloc%d %d\n", p->name, m, m);
+        putq(INDENT "store%c " TEMP "%d", irtyp(p->btyp), i);
+        putq(", " PVAR "%s\n", p->name);
     }
 }
 
@@ -736,19 +877,17 @@ void finishFunc(Node *s) {
 
 
 NameType * ptparametertypelistToParameters(Node * ptl) {
-    NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id, *ts;  int is_array = 0;
+    NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id, *ts;  int is_array = 0;  enum btyp t;
     if (!ptl) return NULL;
     while(ptl) {
         next = allocInArena(&nodes, sizeof (NameType), alignof (NameType));
         if (!start) start = next;
         if (prior) prior->next = next;
-        assertOp(ptl, "ptl", pt_parameter_type_list, __LINE__);
+        assertTok(ptl, "ptl", pt_parameter_type_list, __LINE__);
         assertExists((pd=ptl->l), "ptl->l", __LINE__);
-        assertOp(pd, "pd", pt_parameter_declaration, __LINE__);
-        assertExists((ds=pd->l), "pd->l", __LINE__);
-        assertOp(ds, "ds", pt_declaration_specifiers, __LINE__);
+        assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
         assertExists((d=pd->r), "pd->r", __LINE__);
-        assertOp(d, "d", pt_declarator, __LINE__);
+        assertTok(d, "d", pt_declarator, __LINE__);
         assertExists((id=d->r), "d->r", __LINE__);
         switch (id->tok) {
             case IDENT:
@@ -760,40 +899,33 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
             default:
                 nyi("@ %d", __LINE__);
         }
-        assertOp(id, "id", IDENT, __LINE__);
+        assertTok(id, "id", IDENT, __LINE__);
         next->name = id->s.u.v;
-        assertExists((ts=ds->l), "ds->l", __LINE__);
-        assertOp(ts, "td", pt_type_specifier, __LINE__);
-        if (ds->r) nyi("@ %d", __LINE__);           // OPEN handle pointers and const etc
-        next->ctyp = pointerise(ts->s.ctyp, d->l, is_array);
+        assertExists((ds=pd->l), "pd->l", __LINE__);
+        assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
+        t = ptdeclarationspecifiersToBTypeId(ds);
+        t = pointerise(t, d->l, is_array);
+        next->btyp = t;
         ptl = ptl->r;
         prior = next;
     }
     return start;
 }
 
-BTYPE_ID ptdeclarationspecifiersToBTypeId(Node *ds) {
-    // OPEN: convert tokens to the correct hardcoded btyp enum
-    BTYPE_ID t;
-    nyi("here");
-    t = ds->l->s.ctyp;
-    if ((t != T_INT) && (t != T_DOUBLE) && (t != T_VOID)) die("t == %s @ %d", toktopp[t], __LINE__);
-    return t;
-}
 
 // declaration_specifiers, declarator, declaration_list, compound_statement
 void c99_emit_function_definition(Node *ds, Node *d, Node *dl, Node* cs) {
     NameType *params = 0;  unsigned int t;
     PP(emit, "c99_emit_function_definition");
-    assertOp(ds, "ds", pt_declaration_specifiers, __LINE__);
-    assertOp(d, "d", pt_declarator, __LINE__);
+    assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
+    assertTok(d, "d", pt_declarator, __LINE__);
     t = ptdeclarationspecifiersToBTypeId(ds);
     t = pointerise(t, d->l, 0);
-    assertOp(d->r, "d->r", func_def, __LINE__);
+    assertTok(d->r, "d->r", func_def, __LINE__);
     assertExists(d->r->l, "d->r->l", __LINE__);
-    assertOp(d->r->l, "d->r->l", IDENT, __LINE__);
+    assertTok(d->r->l, "d->r->l", IDENT, __LINE__);
     if (d->r->r) {
-        assertOp(d->r->r, "d->r->r", pt_parameter_type_list, __LINE__);
+        assertTok(d->r->r, "d->r->r", pt_parameter_type_list, __LINE__);
         params = ptparametertypelistToParameters(d->r->r);
     }
     startFunc(t, d->r->l->s.u.v, params);
@@ -803,13 +935,12 @@ void c99_emit_function_definition(Node *ds, Node *d, Node *dl, Node* cs) {
 
 void emitLocalDecl(int t, char *varname) {
     PP(emit, "emitLocalDecl\n");
-    // OPEN: allow multiple names for each type
     int s;
-    if (t == T_VOID) die("invalid void declaration");
-    PP(emit, "varname: %s\n", varname);
+    if (t == B_VOID) die("invalid void declaration");
+    PPbtyp(emit, t);
     s = SIZE(t);
     varadd(varname, 0, t);
-    putq(INDENT LOCAL "%s =l alloc%d %d\n", varname, s, s);
+    putq(INDENT PVAR "%s =l alloc%d %d\n", varname, s, s);
 }
 
 
@@ -824,11 +955,11 @@ void declareGlobal(int t, char* v) {
 // declaration
 void c99_emit_declaration(Node *n) {
     // declaration_specifiers, init_declarator_list, init_declarator, declarator
-    Node *ds, *idl, *id, *d;  unsigned int ctyp;  char *name;  int isVoid;
+    Node *ds, *idl, *id, *d;  enum btyp btyp, t;  char *name;  int isVoid;
     PP(parse, "c99_emit_declaration\n");
-    assertOp(n, "n", pt_declaration, __LINE__);
+    assertTok(n, "n", pt_declaration, __LINE__);
     // get the common type
-    assertOp((ds=n->l), "n->l", pt_declaration_specifiers, __LINE__);
+    assertTok((ds=n->l), "n->l", pt_declaration_specifiers, __LINE__);
     switch (ds->l->tok) {
         default:
             die("unexpect tok %s @ %d", toktopp[n->tok], __LINE__);
@@ -838,9 +969,9 @@ void c99_emit_declaration(Node *n) {
             die("unhandled declaration specifiers->l->tok %s", toktopp[n->tok]);
             return;
         case pt_type_specifier:
-            ctyp = ds->l->s.ctyp;
-            isVoid = ctyp == T_VOID;
-            if ((ctyp == T_STRUCT) || (ctyp == T_STRUCT) || (ctyp == T_UNION) || (ctyp == T_TYPEDEF) || (ctyp == T_TYPE_NAME))
+            btyp = ds->l->s.btyp;
+            isVoid = btyp == T_VOID;
+            if ((btyp == T_STRUCT) || (btyp == T_STRUCT) || (btyp == T_UNION) || (btyp == T_TYPEDEF) || (btyp == T_TYPE_NAME))
                 nyi("%s @ %d", toktopp[n->tok], __LINE__);
             break;
         case pt_type_qualifier:
@@ -853,15 +984,16 @@ void c99_emit_declaration(Node *n) {
             return;
     }
     // process each declarator
-    assertOp((idl=n->r), "n->r", pt_init_declarator_list, __LINE__);
+    assertTok((idl=n->r), "n->r", pt_init_declarator_list, __LINE__);
     do {
-        assertOp((id=idl->l), "idl->l", pt_init_declarator, __LINE__);
+        assertTok((id=idl->l), "idl->l", pt_init_declarator, __LINE__);
         if (id->r) nyi("declarator '=' initializer");
         if ((d=id->l)->tok != pt_declarator) die("programmer error: d->tok != pt_declarator");
         if (d->r->tok == IDENT) {
-            if (isVoid) die("invalid void declaration @ %d", d->lineno);
             name = d->r->s.u.v;
-            declareGlobal(pointerise(ctyp, d->l, 0), name);
+            t = pointerise(btyp, d->l, 0);
+            if (isVoid && (KIND(t) != B_PTR)) die("invalid void declaration @ %d", d->lineno);
+            declareGlobal(pointerise(btyp, d->l, 0), name);
         }
         else
             PP(parse, "c99_emit_declaration encountered %s @ %d", toktopp[d->r->tok], d->lineno);
@@ -1022,27 +1154,27 @@ logical_or_expression
 ;
 
 conditional_expression
-: logical_or_expression                                             { $$ = $1; }
+: logical_or_expression                                             { $$ = $1; PP(pt, "logical_or_expression   =>   conditional_expression"); }
 | logical_or_expression '?' expression ':' conditional_expression   { $$ = node(OP_IIF, $1, node(OP_TF, $3, $5, $%), $%); }
 ;
 
 assignment_expression
-: conditional_expression                                        { $$ = $1; }
-| unary_expression assignment_operator assignment_expression    { $$ = mkopassign($2, $1, $3, $%); }
+: conditional_expression                                        { $$ = $1; PP(pt, "conditional_expression   =>   assignment_expression"); }
+| unary_expression assignment_operator assignment_expression    { $$ = mkopassign($2, $1, $3, $%); PP(pt, "unary_expression assignment_operator assignment_expression   =>   assignment_operator"); }
 ;
 
 assignment_operator
-: '='                                                   { $$ = node(OP_ASSIGN, 0, 0, $%); }
-| MUL_ASSIGN                                            { $$ = node(OP_MUL, 0, 0, $%); }
-| DIV_ASSIGN                                            { $$ = node(OP_DIV, 0, 0, $%); }
-| MOD_ASSIGN                                            { $$ = node(OP_MOD, 0, 0, $%); }
-| ADD_ASSIGN                                            { $$ = node(OP_ADD, 0, 0, $%); }
-| SUB_ASSIGN                                            { $$ = node(OP_SUB, 0, 0, $%); }
-| LEFT_ASSIGN                                           { $$ = node(OP_LSHIFT, 0, 0, $%); }
-| RIGHT_ASSIGN                                          { $$ = node(OP_RSHIFT, 0, 0, $%); }
-| AND_ASSIGN                                            { $$ = node(OP_BAND, 0, 0, $%); }
-| XOR_ASSIGN                                            { $$ = node(OP_BXOR, 0, 0, $%); }
-| OR_ASSIGN                                             { $$ = node(OP_BOR, 0, 0, $%); }
+: '='                                                   { $$ = 0; PP(pt, "=   =>   assignment_operator"); }
+| MUL_ASSIGN                                            { $$ = node(OP_MUL, 0, 0, $%); PP(pt, "*=   =>   assignment_operator"); }
+| DIV_ASSIGN                                            { $$ = node(OP_DIV, 0, 0, $%); PP(pt, "/=   =>   assignment_operator"); }
+| MOD_ASSIGN                                            { $$ = node(OP_MOD, 0, 0, $%); PP(pt, "%=   =>   assignment_operator"); }
+| ADD_ASSIGN                                            { $$ = node(OP_ADD, 0, 0, $%); PP(pt, "+=   =>   assignment_operator"); }
+| SUB_ASSIGN                                            { $$ = node(OP_SUB, 0, 0, $%); PP(pt, "-=   =>   assignment_operator"); }
+| LEFT_ASSIGN                                           { $$ = node(OP_LSHIFT, 0, 0, $%); PP(pt, "<<=   =>   assignment_operator"); }
+| RIGHT_ASSIGN                                          { $$ = node(OP_RSHIFT, 0, 0, $%); PP(pt, ">>=   =>   assignment_operator"); }
+| AND_ASSIGN                                            { $$ = node(OP_BAND, 0, 0, $%); PP(pt, "&=   =>   assignment_operator"); }
+| XOR_ASSIGN                                            { $$ = node(OP_BXOR, 0, 0, $%); PP(pt, "^=   =>   assignment_operator"); }
+| OR_ASSIGN                                             { $$ = node(OP_BOR, 0, 0, $%); PP(pt, "|=   =>   assignment_operator"); }
 ;
 
 expression
@@ -1082,33 +1214,33 @@ init_declarator_list
 
 init_declarator
 : declarator                                            { PP(pt, "declarator   =>   init_declarator"); $$ = node(pt_init_declarator, $1, 0, $%); }
-| declarator '=' initializer                            { PP(pt, "declarator '=' initializer   =>   init_declarator"); $$ = node(pt_init_declarator, $1, $3, $%); }
+| declarator '=' initializer                            { PP(pt, "declarator '=' initializer   =>   init_declarator"); $$ = mkinitdeclarator($1, $3, $%); }
 ;
 
 storage_class_specifier
-: TYPEDEF                                               { PP(pt, "TYPEDEF"); $$ = mktype(pt_storage_class_specifier, T_TYPEDEF, $%); }
-| EXTERN                                                { PP(pt, "EXTERN"); $$ = mktype(pt_storage_class_specifier, T_EXTERN, $%); }
-| STATIC                                                { PP(pt, "STATIC"); $$ = mktype(pt_storage_class_specifier, T_STATIC, $%); }
-| AUTO                                                  { PP(pt, "AUTO"); $$ = mktype(pt_storage_class_specifier, T_AUTO, $%); }
-| REGISTER                                              { PP(pt, "REGISTER"); $$ = mktype(pt_storage_class_specifier, T_REGISTER, $%); }
+: TYPEDEF                                               { PP(pt, "TYPEDEF"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_TYPEDEF, $%); }
+| EXTERN                                                { PP(pt, "EXTERN"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_EXTERN, $%); }
+| STATIC                                                { PP(pt, "STATIC"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_STATIC, $%); }
+| AUTO                                                  { PP(pt, "AUTO"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_AUTO, $%); }
+| REGISTER                                              { PP(pt, "REGISTER"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_REGISTER, $%); }
 ;
 
 type_specifier
-: VOID                                                  { PP(pt, "VOID   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_VOID, $%); }
-| CHAR                                                  { PP(pt, "CHAR   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_CHAR, $%); }
-| SHORT                                                 { $$ = mktype(pt_type_specifier, T_SHORT, $%); }
-| INT                                                   { PP(pt, "INT   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_INT, $%); }
-| LONG                                                  { $$ = mktype(pt_type_specifier, T_LONG, $%); }
-| FLOAT                                                 { $$ = mktype(pt_type_specifier, T_FLOAT, $%); }
-| DOUBLE                                                { PP(pt, "DOUBLE   =>   type_specifier"); $$ = mktype(pt_type_specifier, T_DOUBLE, $%); }
-| SIGNED                                                { $$ = mktype(pt_type_specifier, T_SIGNED, $%); }
-| UNSIGNED                                              { $$ = mktype(pt_type_specifier, T_UNSIGNED, $%); }
-| BOOL                                                  { $$ = mktype(pt_type_specifier, T_BOOL, $%); }
-| COMPLEX                                               { $$ = mktype(pt_type_specifier, T_COMPLEX, $%); }
-| IMAGINARY                                             { $$ = mktype(pt_type_specifier, T_IMAGINARY, $%); }
+: VOID                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_VOID, $%); }
+| CHAR                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_CHAR, $%); }
+| SHORT                                                 { $$ = mktype(pt_type_specifier, (enum btyp) T_SHORT, $%); }
+| INT                                                   { $$ = mktype(pt_type_specifier, (enum btyp) T_INT, $%); }
+| LONG                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_LONG, $%); }
+| FLOAT                                                 { $$ = mktype(pt_type_specifier, (enum btyp) T_FLOAT, $%); }
+| DOUBLE                                                { $$ = mktype(pt_type_specifier, (enum btyp) T_DOUBLE, $%); }
+| SIGNED                                                { $$ = mktype(pt_type_specifier, (enum btyp) T_SIGNED, $%); }
+| UNSIGNED                                              { $$ = mktype(pt_type_specifier, (enum btyp) T_UNSIGNED, $%); }
+| BOOL                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_BOOL, $%); }
+| COMPLEX                                               { $$ = mktype(pt_type_specifier, (enum btyp) T_COMPLEX, $%); }
+| IMAGINARY                                             { $$ = mktype(pt_type_specifier, (enum btyp) T_IMAGINARY, $%); }
 | struct_or_union_specifier                             { nyi("@ %d", $%); }
 | enum_specifier                                        { nyi("@ %d", $%); }
-| TYPE_NAME                                             { PP(pt, "#%s   =>   type_specifier", $1->s.u.v); nyi("@ %d", $%); }
+| TYPE_NAME                                             { nyi("@ %d", $%); }
 ;
 
 struct_or_union_specifier
@@ -1132,10 +1264,10 @@ struct_declaration
 ;
 
 specifier_qualifier_list
-: type_specifier specifier_qualifier_list               { nyi("@ %d", $%); }
-| type_specifier                                        //{ nyi("@ %d", $%); }
-| type_qualifier specifier_qualifier_list               { nyi("@ %d", $%); }
-| type_qualifier                                        //{ nyi("@ %d", $%); }
+: type_specifier specifier_qualifier_list               { $$ = mkspecifierqualifierlist($1, $2, $%); }
+| type_specifier                                        { $$ = mkspecifierqualifierlist($1, 0, $%); }
+| type_qualifier specifier_qualifier_list               { $$ = mkspecifierqualifierlist($1, $2, $%); }
+| type_qualifier                                        { $$ = mkspecifierqualifierlist($1, 0, $%); }
 ;
 
 struct_declarator_list
@@ -1168,13 +1300,13 @@ enumerator
 ;
 
 type_qualifier
-: CONST                                                 { PP(pt, "CONST   =>   type_qualifier"); $$ = mktype(pt_type_qualifier, T_CONST, $%); }
-| RESTRICT                                              { PP(pt, "RESTRICT   =>   type_qualifier"); $$ = mktype(pt_type_qualifier, T_RESTRICT, $%); }
-| VOLATILE                                              { PP(pt, "VOLATILE   =>   type_qualifier"); $$ = mktype(pt_type_qualifier, T_VOLATILE, $%); }
+: CONST                                                 { $$ = mktype(pt_type_qualifier, (enum btyp) T_CONST, $%); }
+| RESTRICT                                              { $$ = mktype(pt_type_qualifier, (enum btyp) T_RESTRICT, $%); }
+| VOLATILE                                              { $$ = mktype(pt_type_qualifier, (enum btyp) T_VOLATILE, $%); }
 ;
 
 function_specifier
-: INLINE                                                { PP(pt, "INLINE   =>   function_specifier"); $$ = mktype(T_INLINE, 0, $%); }
+: INLINE                                                { $$ = mktype(T_INLINE, 0, $%); }
 ;
 
 // node(pt_declarator, l=pointerOrNull, r=pt_direct_declarator)
@@ -1185,7 +1317,7 @@ declarator
 
 // node()
 direct_declarator
-: IDENTIFIER                                                                    { PP(pt, "#%s   =>   direct_declarator", $1->s.u.v); }
+: IDENTIFIER                                                                    { PP(pt, "#%s IDENTIFIER   =>   direct_declarator", $1->s.u.v); }
 | '(' declarator ')'                                                            { nyi("@ %d", $%); }
 | direct_declarator '[' type_qualifier_list assignment_expression ']'           { nyi("@ %d", $%); }
 | direct_declarator '[' type_qualifier_list ']'                                 { nyi("@ %d", $%); }
@@ -1261,20 +1393,20 @@ direct_abstract_declarator
 ;
 
 initializer
-: assignment_expression
+: assignment_expression                                 { PP(pt, "assignment_expression   =>   initializer"); }
 | '{' initializer_list '}'                              { nyi("@ %d", $%); }
 | '{' initializer_list ',' '}'                          { nyi("@ %d", $%); }
 ;
 
 initializer_list
-: initializer
+: initializer                                           { PP(pt, "initializer   =>   initializer_list"); }
 | designation initializer                               { $$ = bindr($1, $2, $%); }
 | initializer_list ',' initializer                      { nyi("@ %d", $%); }
 | initializer_list ',' designation initializer          { nyi("@ %d", $%); }
 ;
 
 designation
-: designator_list '='                                   { $$ = node(OP_ASSIGN, $1, 0, $%); }
+: designator_list '='                                   { PP(pt, "designator_list '='   =>   designation"); $$ = node(OP_ASSIGN, $1, 0, $%); }
 ;
 
 designator_list
@@ -1416,6 +1548,7 @@ int yylex() {
         return 0;
     }
 
+    // open handle octal and hexadecimal
     if (isdigit(c)) {
         // OPEN: use standard C to parse the numbers
         n = 0;
@@ -1444,6 +1577,7 @@ int yylex() {
             ungetc(c, inf);
             yylval.n = node(LIT_INT, 0, 0, __LINE__);
             yylval.n->s.u.n = n;
+            yylval.n->s.btyp = B_U64;
             PP(lex, "%d ", n);
             return CONSTANT;
         }
@@ -1465,8 +1599,53 @@ int yylex() {
         void *buf = allocInArena(&strings, n, 1);
         yylval.n->s.u.v = buf;
         strcpy(yylval.n->s.u.v, v);
-        PP(lex, "%s ", p);
+        PP(lex, "IDENT: %s", v);
+        // OPEN: check if it's a type name
         return IDENTIFIER;
+    }
+
+    // OPEN: handle multichar literals
+    if (c == '\'') {
+        n = getc(inf);
+        if (n == '\\') {
+            switch (n = getc(inf)) {    // https://johndecember.com/html/spec/ascii.html
+                case '\0':
+                    n = 0;      // NUL - null
+                    break;
+                case 'a':
+                    n = 7;      // BEL - bell
+                    break;
+                case 'b':
+                    n = 8;      // BS - backspace
+                    break;
+                case 'f':
+                    n = 12;     // NP/FF - new page / form feed
+                    break;
+                case 'n':
+                    n = 10;     // NL/LF - new line / line feed
+                    break;
+                case 'r':
+                    n = 13;     // CR - carriage return
+                    break;
+                case 't':
+                    n = 9;      // HT - Horizontal Tab
+                    break;
+                case '\\':
+                    n = '\\';
+                    break;
+                case '\'':
+                    n = '\'';
+                    break;
+                default:
+                    nyi("unhandled escape sequence '\\%c'", n);
+            }
+        }
+        yylval.n = node(LIT_CHAR, 0, 0, __LINE__);
+        yylval.n->s.u.n = n;
+        yylval.n->s.btyp = B_CHAR_DEFAULT;
+        c = getc(inf);
+        if (c != '\'') nyi("only single char literal supported");
+        return CONSTANT;
     }
 
     if (c == '"') {
@@ -1513,6 +1692,7 @@ int yylex() {
         globals[oglo] = p;
         yylval.n = node(LIT_STR, 0, 0, __LINE__);
         yylval.n->s.u.n = (oglo++) + SEED_START;
+        yylval.n->s.btyp = B_CHARS;
         PP(lex, "\"%s\" ", p);
         return STRING_LITERAL;
     }
@@ -1535,6 +1715,9 @@ int yylex() {
         case DI('-','='): return SUB_ASSIGN;
         case DI('^','='): return XOR_ASSIGN;
         case DI('|','='): return OR_ASSIGN;
+        case DI('<',':'):
+            nyi("get type lang");
+            return TYPE_NAME;
         case DI('.','.'): {
             c3 = getc(inf);
             if (c3 == '.') return ELLIPSIS;
@@ -1588,3 +1771,96 @@ int main(int argc, char*argv[]) {
 
     return EXIT_SUCCESS;
 }
+
+void i8_to_i16(Symb *s) {
+    putq(INDENT TEMP "%d =w extsb ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_I16;
+    s->u.n = reserveTmp();
+}
+
+void i8_to_i32(Symb *s) {
+    putq(INDENT TEMP "%d =w extsb ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_I32;
+    s->u.n = reserveTmp();
+}
+
+void i8_to_i64(Symb *s) {
+    putq(INDENT TEMP "%d =l extsb ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_I64;
+    s->u.n = reserveTmp();
+}
+
+void i16_to_i32(Symb *s) {
+    putq(INDENT TEMP "%d =w extsh ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_I32;
+    s->u.n = reserveTmp();
+}
+
+void i16_to_i64(Symb *s) {
+    putq(INDENT TEMP "%d =l extsh ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_I64;
+    s->u.n = reserveTmp();
+}
+
+void i32_to_i64(Symb *s) {
+    putq(INDENT TEMP "%d =l extsw ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_I64;
+    s->u.n = reserveTmp();
+}
+
+void i8_to_f64(Symb *s) {
+    i8_to_i64(s);
+    putq(INDENT TEMP "%d =d swtof ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_F64;
+    s->u.n = reserveTmp();
+}
+
+void i16_to_f64(Symb *s) {
+    i16_to_i64(s);
+    putq(INDENT TEMP "%d =d swtof ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_F64;
+    s->u.n = reserveTmp();
+}
+
+void i32_to_f64(Symb *s) {
+    putq(INDENT TEMP "%d =d swtof ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_F64;
+    s->u.n = reserveTmp();
+}
+
+void i64_to_f64(Symb *s) {
+    putq(INDENT TEMP "%d =d sltof ", tmp);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_F64;
+    s->u.n = reserveTmp();
+}
+
