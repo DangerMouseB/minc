@@ -16,10 +16,9 @@
 
  *** OVERVIEW ***
 
- minc (i.e. minimal C) is derrived from minic by Quentin Carbonneaux
-
- It is supposed to be useful in exploring how to generate IR - the basics for doing C but also as a starting point
- for higher level ideas - e.g. inlining, multidispatch, exception handling, and so on.
+ minc, a minimal C derrived from minic by Quentin Carbonneaux, is supposed to be useful in exploring how to
+ generate QBE IR. As well as convering the basics for doing C it also is a starting point for higher level ideas,
+ such as inlining, multidispatch, and exception handling.
 
  The code here should be simple (in the Rich Hickey sense) and easy to understand.
 
@@ -28,22 +27,15 @@
  Stmt and Node were merged.
 
  We won't implement the full C99 standard but I'm a firm be believer in designing for the future even whilst
- implementing for the now. I found minic hard to extend as the yacc grammar was bound into the implementation types.
+ implementing for the now.
 
- We will continue to use the YACC implementation Quentin used.
+ We will continue to use Quentin's  YACC implementation.
 
  * to be extendable in ways that don't confirm to the standard such as:
     * adding bones style memory management based on stack, sratch and heap
     * add rust borrow style
     * add bones types
     * add logging for debugging in the background
-
- We would like to be able to use this in Python so will need to rework the memory management and fully clean up. For
- speed we could put out globals in one arena, and create a new arena for each function. Then free each arena in
- one go. Pyminc would take in C99 code, and output linked binary into memory to be v=called via ctypes. We don't
- need to call into it from C but I supposed that might be possible. Would need to understand linkers and loaders.
- Pyminc should also output QBE IR and asm.
-
 
 
 
@@ -61,12 +53,7 @@
  reentrant in Python. Which we probably don't need.
 
 
- minc stuff - hide as much as possible
- c stuff
- qbe ir stuff
-
 https://cdecl.org/
-
 
 
  NEXT
@@ -105,7 +92,7 @@ void yyerror(char const *);
 #define GLOBAL  "$g"
 #define TEMP    "%%."
 #define PVAR    "%%_"
-#define LABEL   "@"
+#define LABEL   "@L"
 
 
 Symb emitexpr(Node *);
@@ -238,7 +225,7 @@ enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
 char irtyp(enum btyp btyp) {
     // OPEN: sort out ub, sb, uh, sb, b and h
     switch (KIND(btyp)) {
-        case B_VOID: die("void has no size");
+        case B_VOID: return 'V';
         case B_I8:
         case B_U8:
         case B_I16:
@@ -353,8 +340,7 @@ Node * appendR(Node * start, Node * next) {
         while (end->r) end = end->r;
         end->r = next;
         return start;
-    }
-    else
+    } else
         return next;
 }
 
@@ -403,9 +389,12 @@ void emitLocalDecl(enum btyp t, char *varname);
 void i8_to_i16(Symb *s);
 void i8_to_i32(Symb *s);
 void i8_to_i64(Symb *s);
+void u8_to_u64(Symb *s);
 void i16_to_i32(Symb *s);
 void i16_to_i64(Symb *s);
+void u16_to_u64(Symb *s);
 void i32_to_i64(Symb *s);
+void u32_to_u64(Symb *s);
 
 void i8_to_f64(Symb *s);
 void i16_to_f64(Symb *s);
@@ -479,7 +468,20 @@ Scale:
     if (r->t == Con)
         r->u.n *= sz;
     else {
-        if (irtyp(r->btyp) != 'l') i8_to_i32(r);
+        switch (r->btyp) {
+            case B_I8:
+                i8_to_i64(r);
+            case B_U8:
+                u8_to_u64(r);
+            case B_I16:
+                i16_to_i64(r);
+            case B_U16:
+                u16_to_u64(r);
+            case B_I32:
+                i32_to_i64(r);
+            case B_U32:
+                u32_to_u64(r);
+        }
         putq(INDENT TEMP "%d =l mul %d, ", tmp_seed, sz);
         emitsymb(*r);
         putq("\n");
@@ -509,8 +511,13 @@ void emitcall(Node *n, Symb *sr) {
     for (a=n->r; a; a=a->r)
         a->s = emitexpr(a->l);
     putq(INDENT);
-    emitsymb(*sr);
-    putq(" =%c call $%s(", irtyp(sr->btyp), name);
+    if (sr->btyp == B_VOID) {
+        putq("call $%s(", name);
+    }
+    else {
+        emitsymb(*sr);
+        putq(" =%c call $%s(", irtyp(sr->btyp), name);
+    }
     a = n->r; iArg = 1;
     while (a) {
         if (iArg == iEllipsis) putq("..., ");
@@ -779,8 +786,7 @@ int emitstmt(Node *s, int b) {
                 x = emitexpr(s->l);
                 putq(INDENT "ret ");
                 emitsymb(x);
-            }
-            else
+            } else
                 putq(INDENT "ret");
             putq("\n");
             return 1;
@@ -1053,7 +1059,7 @@ primary_expression
 
 postfix_expression
 : primary_expression                                    { PP(pt, "primary_expression   =>   postfix_expression", $%); }
-| postfix_expression '[' expression ']'                 { $$ = nodepp(OP_INDEX, $1, $3, $%, pt, "postfix_expression '[' expression ']'   =>   postfix_expression"); }
+| postfix_expression '[' expression ']'                 { PP(pt, "postfix_expression '[' expression ']'   =>   postfix_expression", $%); $$ = mkidx($1, $3, $%); }
 | postfix_expression '(' ')'                            { $$ = nodepp(OP_CALL, $1, 0, $%, pt, "postfix_expression '(' ')'   =>   postfix_expression"); }
 | postfix_expression '(' argument_expression_list ')'   { $$ = nodepp(OP_CALL, $1, $3, $%, pt, "postfix_expression '(' argument_expression_list ')'   =>   postfix_expression"); }
 | postfix_expression '.' IDENTIFIER                     { nyi("@ %d", $%); }
@@ -1766,6 +1772,15 @@ int main(int argc, char*argv[]) {
     return EXIT_SUCCESS;
 }
 
+//void t_to_t(enum btyp t1, enum btyp t2, Symb *s) {
+//    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
+//    emitsymb(*s);
+//    putq("\n");
+//    s->t = Tmp;
+//    s->btyp = t2;
+//    s->u.n = reserve_tmp();
+//}
+
 void i8_to_i16(Symb *s) {
     putq(INDENT TEMP "%d =w extsb ", tmp_seed);
     emitsymb(*s);
@@ -1793,6 +1808,15 @@ void i8_to_i64(Symb *s) {
     s->u.n = reserve_tmp();
 }
 
+void u8_to_u64(Symb *s) {
+    putq(INDENT TEMP "%d =l extub ", tmp_seed);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_U64;
+    s->u.n = reserve_tmp();
+}
+
 void i16_to_i32(Symb *s) {
     putq(INDENT TEMP "%d =w extsh ", tmp_seed);
     emitsymb(*s);
@@ -1811,12 +1835,30 @@ void i16_to_i64(Symb *s) {
     s->u.n = reserve_tmp();
 }
 
+void u16_to_u64(Symb *s) {
+    putq(INDENT TEMP "%d =l extuh ", tmp_seed);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_U64;
+    s->u.n = reserve_tmp();
+}
+
 void i32_to_i64(Symb *s) {
     putq(INDENT TEMP "%d =l extsw ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I64;
+    s->u.n = reserve_tmp();
+}
+
+void u32_to_u64(Symb *s) {
+    putq(INDENT TEMP "%d =l extuw ", tmp_seed);
+    emitsymb(*s);
+    putq("\n");
+    s->t = Tmp;
+    s->btyp = B_U64;
     s->u.n = reserve_tmp();
 }
 

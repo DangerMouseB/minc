@@ -1,9 +1,9 @@
 #include "fred.h"
 //#define FMT_FLOAT "%f"
 
-typedef char * cstar;
+//typedef char * cstar;
 
-static int Q,  nSolutions;
+int Q,  nSolutions;
 
 void print(int **board) {
 	int i, j;
@@ -58,7 +58,7 @@ int **newBoard(int N) {
     return answer;
 }
 
-int main(int ac, cstar av[]) {
+int main(int ac, char *av[]) {
 	int **board;
 	Q = 8;
 	if (ac >= 2)

@@ -224,7 +224,7 @@ enum tok {
 };
 
 #define OP_EXPR_START LIT_CHAR
-#define OP_EXPR_END OP_BIN_END
+#define OP_EXPR_END OP_BXOR
 #define OP_BIN_START OP_ADD
 #define OP_BIN_END OP_BXOR
 

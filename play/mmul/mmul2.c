@@ -1,7 +1,8 @@
 int joe();
 int sally(int, void *);
 int fred;
- scalarProduct(double *rowA, double **B, int mA, int j) {
+
+double scalarProduct(double *rowA, double **B, int mA, int j) {
     // A and B are n x m
     double answer;  int k;  double a;  double b;
     answer = 0;
