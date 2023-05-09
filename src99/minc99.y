@@ -70,8 +70,6 @@ https://cdecl.org/
 
 
  NEXT
- use g_<name> for declared globals
- use g<seed> for literal strings
 
  store function definitions with their types -> check types on call AND insert ellipses properly
  need a function struct
@@ -107,7 +105,7 @@ void yyerror(char const *);
 #define GLOBAL  "$g"
 #define TEMP    "%%."
 #define PVAR    "%%_"
-#define LABEL   "@L"
+#define LABEL   "@"
 
 
 Symb emitexpr(Node *);
@@ -259,10 +257,6 @@ char irtyp(enum btyp btyp) {
     return 'l';
 }
 
-
-
-// Node construction
-
 unsigned int pointerise(enum btyp btyp, Node *ptr, int isarray) {
     // OPEN check for const, volatile, restrict
     while (ptr) {
@@ -279,6 +273,10 @@ unsigned int pointerise(enum btyp btyp, Node *ptr, int isarray) {
     }
     return btyp;
 }
+
+
+
+// Node construction
 
 Node *nodepp(int tok, Node *l, Node *r, int lineno, int level, char *msg, ...) {
     if (level & g_logging_level) {
@@ -400,7 +398,7 @@ Node * mkinitdeclarator(Node *declarator, Node *initializer, int lineno) {
 // QBE IR emission
 
 void emitboolop(Node *, int, int);
-void emitLocalDecl(int t, char *varname);
+void emitLocalDecl(enum btyp t, char *varname);
 
 void i8_to_i16(Symb *s);
 void i8_to_i32(Symb *s);
@@ -438,6 +436,7 @@ enum btyp prom(int tok, Symb *l, Symb *r) {
     if (l->btyp == r->btyp && KIND(l->btyp) != B_PTR)
         return l->btyp;
 
+    // l is pointer
     if (l->btyp == B_I64 && r->btyp == B_I32) {
         i8_to_i32(r);
         return B_I64;
@@ -481,10 +480,10 @@ Scale:
         r->u.n *= sz;
     else {
         if (irtyp(r->btyp) != 'l') i8_to_i32(r);
-        putq(INDENT TEMP "%d =l mul %d, ", tmp, sz);
+        putq(INDENT TEMP "%d =l mul %d, ", tmp_seed, sz);
         emitsymb(*r);
         putq("\n");
-        r->u.n = reserveTmp();
+        r->u.n = reserve_tmp();
     }
     return l->btyp;
 }
@@ -500,25 +499,21 @@ void emitload(Symb d, Symb s) {
 
 
 void emitcall(Node *n, Symb *sr) {
-    Node *a;  unsigned ft = 0;  int iEllipses, iArg;
-    char *f = n->l->s.u.v;
-    // OPEN: get ellipses location from function parameter types
-    if (strcmp(f, "printf") == 0) iEllipses = 2;
-    if (strcmp(f, "fprintf") == 0) iEllipses = 3;
-    if (varget(f)) {
-        ft = varget(f)->btyp;
-        if (KIND(ft) != B_FN) die("invalid call");
-    } else
-        die("undeclared function %s", f);
-    sr->btyp = DREF(ft);
+    Node *a;  int iEllipsis, iArg;  Symb *s;
+    char *name = n->l->s.u.v;
+    if (!(s=symget(name))) die("undeclared function %s", name);
+    if (s->t != Glo) die("programmer error @ %d", __LINE__);
+    if (KIND(s->btyp) != B_FN) die("programmer error @ %d", __LINE__);
+    iEllipsis = i_ellipsis[s->u.n];
+    sr->btyp = DREF(s->btyp);               // functions are stored shifted with type B_FN
     for (a=n->r; a; a=a->r)
         a->s = emitexpr(a->l);
     putq(INDENT);
     emitsymb(*sr);
-    putq(" =%c call $%s(", irtyp(sr->btyp), f);
+    putq(" =%c call $%s(", irtyp(sr->btyp), name);
     a = n->r; iArg = 1;
     while (a) {
-        if (iArg == iEllipses) putq("..., ");
+        if (iArg == iEllipsis) putq("..., ");
         putq("%c ", irtyp(a->s.btyp));
         emitsymb(a->s);
         a = a->r;
@@ -532,16 +527,16 @@ void emitcall(Node *n, Symb *sr) {
 Symb emitexpr(Node *n) {
     static const char neltl[] = {OP_NE, OP_EQ, OP_LT, OP_LE, };
     static char *otoa[] = {
-            [OP_ADD] = "add",
-            [OP_SUB] = "sub",
-            [OP_MUL] = "mul",
-            [OP_DIV] = "div",
-            [OP_MOD] = "rem",
-            [OP_BAND] = "and",
-            [OP_LT] = "cslt",  /* meeeeh, wrong for pointers! */
-            [OP_LE] = "csle",
-            [OP_EQ] = "ceq",
-            [OP_NE] = "cne",
+        [OP_ADD] = "add",
+        [OP_SUB] = "sub",
+        [OP_MUL] = "mul",
+        [OP_DIV] = "div",
+        [OP_MOD] = "rem",
+        [OP_BAND] = "and",
+        [OP_LT] = "cslt",  /* meeeeh, wrong for pointers! */
+        [OP_LE] = "csle",
+        [OP_EQ] = "ceq",
+        [OP_NE] = "cne",
     };
     Symb sr, s0, s1, st;
     enum tok o;
@@ -549,14 +544,14 @@ Symb emitexpr(Node *n) {
     char ty[2];
 
     sr.t = Tmp;
-    sr.u.n = reserveTmp();
+    sr.u.n = reserve_tmp();
 
     switch (n->tok) {
 
         // both these short circuit
         case OP_OR:
         case OP_AND:
-            l = reserve(3);
+            l = reserve_lbl(3);
             emitboolop(n, l, l+1);
             putq(LABEL "%d\n", l);
             putq(INDENT "jmp " LABEL "%d\n", l+2);
@@ -644,7 +639,7 @@ Symb emitexpr(Node *n) {
             o = n->tok == OP_INC ? OP_ADD : OP_SUB;    // e.g. x += 1  => x = x + 1
             st = lval(n->l);
             s0.t = Tmp;
-            s0.u.n = reserveTmp();
+            s0.u.n = reserve_tmp();
             s0.btyp = st.btyp;
             emitload(s0, st);
             s1.t = Con;
@@ -683,10 +678,10 @@ Symb emitexpr(Node *n) {
             break;
     }
     if (n->tok == OP_SUB  &&  KIND(s0.btyp) == B_PTR  &&  KIND(s1.btyp) == B_PTR) {
-        putq(INDENT TEMP "%d =l div ", tmp);
+        putq(INDENT TEMP "%d =l div ", tmp_seed);
         emitsymb(sr);
         putq(", %d\n", SIZE(DREF(s0.btyp)));
-        sr.u.n = reserveTmp();
+        sr.u.n = reserve_tmp();
     }
     if (n->tok == OP_INC  ||  n->tok == OP_DEC) {
         putq(INDENT "store%c ", irtyp(st.btyp));
@@ -708,11 +703,11 @@ Symb lval(Node *n) {
         default:
             die("invalid lvalue");
         case IDENT:
-            if (!varget(n->s.u.v)) {
+            if (!symget(n->s.u.v)) {
                 PP(error, "%s is not defined\n", n->s.u.v);
                 die("undefined variable");
             }
-            s = *varget(n->s.u.v);
+            s = *symget(n->s.u.v);
             break;
         case OP_DEREF:
             s = emitexpr(n->l);
@@ -734,13 +729,13 @@ void emitboolop(Node *n, int lt, int lf) {
             putq(", " LABEL "%d, " LABEL "%d\n", lt, lf);
             break;
         case OP_OR:
-            l = reserve(1);
+            l = reserve_lbl(1);
             emitboolop(n->l, lt, l);
             putq(LABEL "%d\n", l);
             emitboolop(n->r, lt, lf);
             break;
         case OP_AND:
-            l = reserve(1);
+            l = reserve_lbl(1);
             emitboolop(n->l, l, lf);
             putq(LABEL "%d\n", l);
             emitboolop(n->r, lt, lf);
@@ -772,7 +767,7 @@ int emitstmt(Node *s, int b) {
                 assertTok(d->r, "d->r", IDENT, __LINE__);
                 varname = d->r->s.u.v;
                 emitLocalDecl(pointerise(t, d->l, 0), varname);
-                if (ini=id->r) {
+                if ((ini=id->r)) {
                     emitexpr(node(OP_ASSIGN, d->r, ini, __LINE__));
                 }
                 idl = idl->r;
@@ -796,14 +791,14 @@ int emitstmt(Node *s, int b) {
         case Seq:
             return emitstmt(s->l, b) || emitstmt(s->r, b);
         case If:
-            l = reserve(2);
+            l = reserve_lbl(2);
             emitboolop(s->l, l, l+1);
             putq(LABEL "%d\n", l);
             emitstmt(s->r, b);
             putq(LABEL "%d\n", l+1);
             return 0;
         case IfElse:
-            l = reserve(3);
+            l = reserve_lbl(3);
             emitboolop(s->l, l, l+1);
             putq(LABEL "%d\n", l);
             Node * e = s->r;
@@ -814,7 +809,7 @@ int emitstmt(Node *s, int b) {
                 putq(LABEL "%d\n", l+2);
             return e->r && r;
         case While:
-            l = reserve(3);
+            l = reserve_lbl(3);
             putq(LABEL "%d\n", l);
             emitboolop(s->l, l+1, l+2);
             putq(LABEL "%d\n", l+1);
@@ -840,31 +835,39 @@ int emitstmt(Node *s, int b) {
 }
 
 
+void emitGlobals() {
+    for (int oglo = 0; oglo < oglo_seed; oglo++)
+        if (data_defs[oglo])
+            putq("data " GLOBAL "%d = %s\n", oglo, data_defs[oglo]);
+};
+
+
 void startFunc(enum btyp t, char *fnname, NameType *params) {
     NameType *p;  int i, m;
     PP(emit, "startFunc: %s", fnname);
 
-    varadd(fnname, 1, FUNC(t));
+    symadd(fnname, reserve_glo(), FUNC(t));
     if (t == B_VOID)
         putq("export function $%s(", fnname);
     else
         putq("export function %c $%s(", irtyp(t), fnname);
     if ((p=params))
         do {
-            varadd(p->name, 0, p->btyp);
+            symadd(p->name, 0, p->btyp);
             putq("%c ", irtyp(p->btyp));
-            putq(TEMP "%d", reserveTmp());
+            putq(TEMP "%d", reserve_tmp());
             p = p->next;
             if (p) putq(", ");
         } while (p);
     putq(") {\n");
-    putq(LABEL "%d\n", reserve(1));                         // make start.1
+    putq(LABEL "start.%d\n", reserve_lbl(1));
     for (i=SEED_START, p=params; p; i++, p=p->next) {
         m = SIZE(p->btyp);
         putq(INDENT PVAR "%s =l alloc%d %d\n", p->name, m, m);
         putq(INDENT "store%c " TEMP "%d", irtyp(p->btyp), i);
         putq(", " PVAR "%s\n", p->name);
     }
+    putq(LABEL "body.%d\n", reserve_lbl(1));
 }
 
 
@@ -872,15 +875,16 @@ void finishFunc(Node *s) {
     PP(emit, "finishFunc");
     if (!emitstmt(s, -1)) putq(INDENT "ret\n");    // for the case of a void function with no return statement
     putq("}\n\n");
-    varclr();
+    symclr();
+    tmp_seed = SEED_START;
 }
 
 
 NameType * ptparametertypelistToParameters(Node * ptl) {
-    NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id, *ts;  int is_array = 0;  enum btyp t;
+    NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id;  int is_array = 0;  enum btyp t;
     if (!ptl) return NULL;
     while(ptl) {
-        next = allocInArena(&nodes, sizeof (NameType), alignof (NameType));
+        next = allocInBuckets(&nodes, sizeof (NameType), alignof (NameType));
         if (!start) start = next;
         if (prior) prior->next = next;
         assertTok(ptl, "ptl", pt_parameter_type_list, __LINE__);
@@ -933,71 +937,64 @@ void c99_emit_function_definition(Node *ds, Node *d, Node *dl, Node* cs) {
 }
 
 
-void emitLocalDecl(int t, char *varname) {
+void emitLocalDecl(enum btyp t, char *varname) {
     PP(emit, "emitLocalDecl\n");
     int s;
     if (t == B_VOID) die("invalid void declaration");
     PPbtyp(emit, t);
     s = SIZE(t);
-    varadd(varname, 0, t);
+    symadd(varname, 0, t);
     putq(INDENT PVAR "%s =l alloc%d %d\n", varname, s, s);
-}
-
-
-void declareGlobal(int t, char* v) {
-    if (oglo == NGlo) die("too many string literals");
-    globals[oglo] = allocInArena(&strings, sizeof "{ x 0 }", 1);
-    sprintf(globals[oglo], "{ %c 0 }", irtyp(t));
-    varadd(v, oglo++, t);
 }
 
 
 // declaration
 void c99_emit_declaration(Node *n) {
     // declaration_specifiers, init_declarator_list, init_declarator, declarator
-    Node *ds, *idl, *id, *d;  enum btyp btyp, t;  char *name;  int isVoid;
+    Node *ds, *idl, *id, *d, *fd, *ptl, *pd;  enum btyp btyp, t;  char *name;  int isVoid = 0;
     PP(parse, "c99_emit_declaration\n");
     assertTok(n, "n", pt_declaration, __LINE__);
     // get the common type
     assertTok((ds=n->l), "n->l", pt_declaration_specifiers, __LINE__);
-    switch (ds->l->tok) {
-        default:
-            die("unexpect tok %s @ %d", toktopp[n->tok], __LINE__);
-            return;
-        case pt_storage_class_specifier:
-            // T_TYPEDEF, T_EXTERN, T_STATIC, T_AUTO, T_REGISTER
-            die("unhandled declaration specifiers->l->tok %s", toktopp[n->tok]);
-            return;
-        case pt_type_specifier:
-            btyp = ds->l->s.btyp;
-            isVoid = btyp == T_VOID;
-            if ((btyp == T_STRUCT) || (btyp == T_STRUCT) || (btyp == T_UNION) || (btyp == T_TYPEDEF) || (btyp == T_TYPE_NAME))
-                nyi("%s @ %d", toktopp[n->tok], __LINE__);
-            break;
-        case pt_type_qualifier:
-            // CONST, RESTRICT, VOLATILE
-            nyi("%s @ %d", toktopp[n->tok], __LINE__);
-            return;
-        case T_INLINE:  // aka function_specifier
-            // INLINE
-            nyi("%s @ %d", toktopp[n->tok], __LINE__);
-            return;
-    }
+    btyp = ptdeclarationspecifiersToBTypeId(ds);
     // process each declarator
     assertTok((idl=n->r), "n->r", pt_init_declarator_list, __LINE__);
+    // OPEN: handle reclaration (don't allow reinit, keep fn and data separate)
     do {
         assertTok((id=idl->l), "idl->l", pt_init_declarator, __LINE__);
-        if (id->r) nyi("declarator '=' initializer");
+        if (id->r) nyi("declarator '=' initializer @ %l", __LINE__);
         if ((d=id->l)->tok != pt_declarator) die("programmer error: d->tok != pt_declarator");
-        if (d->r->tok == IDENT) {
-            name = d->r->s.u.v;
-            t = pointerise(btyp, d->l, 0);
-            if (isVoid && (KIND(t) != B_PTR)) die("invalid void declaration @ %d", d->lineno);
-            declareGlobal(pointerise(btyp, d->l, 0), name);
+        if (oglo_seed == NGlo) die("too many globals");
+        switch (d->r->tok) {
+            default:
+                die("programmer error");
+            case IDENT:
+                // variable definition
+                name = d->r->s.u.v;
+                t = pointerise(btyp, d->l, 0);      // OPEN: handle array
+                if (isVoid && (KIND(t) != B_PTR)) die("invalid void declaration @ %d", d->lineno);
+                data_defs[oglo_seed] = allocInBuckets(&all_strings, sizeof "{ x 0 }", 1);
+                sprintf(data_defs[oglo_seed], "{ %c 0 }", irtyp(t));
+                symadd(name, reserve_glo(), t);
+                break;
+            case func_def:
+                fd = d->r;
+                name = fd->l->s.u.v;
+                ptl = fd->r;
+                int i = 1;
+                while (ptl) {
+                    assertTok(ptl, "fd->r", pt_parameter_type_list, __LINE__);
+                    assertExists(pd=ptl->l, "ptl->l", __LINE__);
+                    if (pd->tok == T_ELLIPSIS) {i_ellipsis[oglo_seed] = i; break;}
+                    assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
+                    i++;
+                    ptl = ptl->r;
+                }
+                PP(parse, "c99_emit_declaration encountered %s (ellipsis @ %d) @ %d", toktopp[d->r->tok], i, d->lineno);
+                t = pointerise(btyp, d->l, 0);      // OPEN: handle array?
+                symadd(name, reserve_glo(), FUNC(t));
+                break;
         }
-        else
-            PP(parse, "c99_emit_declaration encountered %s @ %d", toktopp[d->r->tok], d->lineno);
-            // OPEN: capture function argument types for type checking including handling variable length signatures
         idl = idl->r;
     } while (idl);
 }
@@ -1524,7 +1521,7 @@ struct {
 
 
 int yylex() {
-    int i, c, c2, c3, n;  char v[NString], *p;  double d, s;
+    int i, c, c2, c3, n;  char v[SYM_NAME_MAX], *p;  double d, s;
 
     do {
         c = getc(inf);
@@ -1586,7 +1583,7 @@ int yylex() {
     if (isalpha(c) || c == '_') {
         p = v;  n = 0;
         do {
-            if (p == &v[NString-1]) die("ident too long");
+            if (p == &v[SYM_NAME_MAX-1]) die("ident too long");
             *p++ = c;  n++;
             c = getc(inf);
         } while (isalnum(c) || c == '_');
@@ -1596,7 +1593,7 @@ int yylex() {
             if (strcmp(v, kwds[i].s) == 0)
                 return kwds[i].t;
         yylval.n = node(IDENT, 0, 0, __LINE__);
-        void *buf = allocInArena(&strings, n, 1);
+        void *buf = allocInBuckets(&all_strings, n, 1);
         yylval.n->s.u.v = buf;
         strcpy(yylval.n->s.u.v, v);
         PP(lex, "IDENT: %s", v);
@@ -1651,13 +1648,13 @@ int yylex() {
     if (c == '"') {
         i = 0;
         n = 32;
-        p = allocInArena(&strings, n, 1);
+        p = allocInBuckets(&all_strings, n, 1);
         strcpy(p, "{ b \"");
         for (i=5;; i++) {
             c = getc(inf);
             if (c == EOF) die("unclosed string literal");
             if (i+8 >= n) {
-                char* new = reallocInArena(&strings, p, n*2, 1);
+                char* new = reallocInBuckets(&all_strings, p, n*2, 1);
                 if (!new) die("out of memory");
                 if (new != p) p = memcpy(new, p, n);
                 n *= 2;
@@ -1688,10 +1685,10 @@ int yylex() {
             }
         }
         strcpy(&p[i], "\", b 0 }");
-        if (oglo == NGlo) die("too many globals");
-        globals[oglo] = p;
+        if (oglo_seed == NGlo) die("too many globals");
+        data_defs[oglo_seed] = p;
         yylval.n = node(LIT_STR, 0, 0, __LINE__);
-        yylval.n->s.u.n = (oglo++) + SEED_START;
+        yylval.n->s.u.n = reserve_glo();
         yylval.n->s.btyp = B_CHARS;
         PP(lex, "\"%s\" ", p);
         return STRING_LITERAL;
@@ -1758,109 +1755,106 @@ int main(int argc, char*argv[]) {
     }
     g_logging_level = parse | emit | error | pt | lex;
     of = stdout;
-    initArena(&strings, 4096);
-    initArena(&idents, 4096);
-    initArena(&nodes, 4096);
+    initBuckets(&all_strings, 4096);
+    initBuckets(&nodes, 4096);
     int ret = yyparse();
     if (ret) die("parse error (%d)", ret);
-    for (int o=0; o<oglo; o++)
-        putq("data " GLOBAL "%d = %s\n", o + SEED_START, globals[o]);
-    freeChunks(strings.first_chunk);
-    freeChunks(idents.first_chunk);
-    freeChunks(nodes.first_chunk);
+    emitGlobals();
+    freeBuckets(all_strings.first_bucket);
+    freeBuckets(nodes.first_bucket);
 
     return EXIT_SUCCESS;
 }
 
 void i8_to_i16(Symb *s) {
-    putq(INDENT TEMP "%d =w extsb ", tmp);
+    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I16;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i8_to_i32(Symb *s) {
-    putq(INDENT TEMP "%d =w extsb ", tmp);
+    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I32;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i8_to_i64(Symb *s) {
-    putq(INDENT TEMP "%d =l extsb ", tmp);
+    putq(INDENT TEMP "%d =l extsb ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i16_to_i32(Symb *s) {
-    putq(INDENT TEMP "%d =w extsh ", tmp);
+    putq(INDENT TEMP "%d =w extsh ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I32;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i16_to_i64(Symb *s) {
-    putq(INDENT TEMP "%d =l extsh ", tmp);
+    putq(INDENT TEMP "%d =l extsh ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i32_to_i64(Symb *s) {
-    putq(INDENT TEMP "%d =l extsw ", tmp);
+    putq(INDENT TEMP "%d =l extsw ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_I64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i8_to_f64(Symb *s) {
     i8_to_i64(s);
-    putq(INDENT TEMP "%d =d swtof ", tmp);
+    putq(INDENT TEMP "%d =d swtof ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_F64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i16_to_f64(Symb *s) {
     i16_to_i64(s);
-    putq(INDENT TEMP "%d =d swtof ", tmp);
+    putq(INDENT TEMP "%d =d swtof ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_F64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i32_to_f64(Symb *s) {
-    putq(INDENT TEMP "%d =d swtof ", tmp);
+    putq(INDENT TEMP "%d =d swtof ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_F64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 
 void i64_to_f64(Symb *s) {
-    putq(INDENT TEMP "%d =d sltof ", tmp);
+    putq(INDENT TEMP "%d =d sltof ", tmp_seed);
     emitsymb(*s);
     putq("\n");
     s->t = Tmp;
     s->btyp = B_F64;
-    s->u.n = reserveTmp();
+    s->u.n = reserve_tmp();
 }
 

@@ -1,7 +1,7 @@
 #ifndef AJ_BTYPE_H
 #define AJ_BTYPE_H
 
-#include "arena.h"
+#include "buckets.h"
 
 
 // OPEN: add aliases so can do - typedef can automatically add aliased
@@ -87,11 +87,11 @@ enum bexclusioncat {
 };
 
 struct BTypeManager {
-    char **txt_bySymId;                 // strings Arena
-    struct map *symid_byName;           // keys are pointers into symtxts Arena
+    char **txt_bySymId;                 // kept in string Buckets
+    struct map *symid_byName;           // keys are pointers into symtxts Buckets
     unsigned int *order_bySymId;
-    char **name_byBTypeId;              // names are pointers into symtxts Arena
-    struct map *bTypeId_byName;         // keys are pointers into symtxts Arena
+    char **name_byBTypeId;              // names are pointers into symtxts Buckets
+    struct map *bTypeId_byName;         // keys are pointers into symtxts Buckets
 
     struct BType *bType_byBTypeId;      // for the mo all these can be malloc'd with fixed size
     struct BTInter *btint_byDescId;
@@ -103,8 +103,8 @@ struct BTypeManager {
     struct BTMap *btmap_byDescId;
     struct BTFunc *btfnc_byDescId;
 
-    Arena intists;                      // null terminated lists of types and syms
-    Arena strings;                      // null terminated char* (utf8)
+    Buckets intists;                    // null terminated lists of types and syms
+    Buckets strings;                    // null terminated char* (utf8)
     enum bexclusioncat *bexclusioncat_byBTypeId;    // this could also be done as a list of types per category which makes adding CCY etc easier
 };
 

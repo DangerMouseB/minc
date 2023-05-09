@@ -1,4 +1,9 @@
 int printf(const char*, ...);
+int fprintf(void *stream, const char *format, ...);
+//void *stdout;
+void *calloc(unsigned long nitems, unsigned long size);
+//int printf(const char*, ...);
+int atoi(const char*);
 
 //<:i32> LF() {return 255 * 256 + 10;}
 //unsigned char LF2() {return 255 * 256 + 10;}  // OPEN: make return value conform to return type

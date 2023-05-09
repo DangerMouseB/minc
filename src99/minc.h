@@ -8,7 +8,7 @@
 #include <stdalign.h>
 #include "aj.h"
 
-#define SEED_START 0
+#define SEED_START 1
 
 
 // C and QBE IR
@@ -82,7 +82,6 @@ static char *btyptopp[] = {
 
 void PP(int level, char *msg, ...);
 void die(char *msg, ...);
-unsigned hash(char *s);
 
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -274,7 +273,7 @@ struct Symb {
     } t;                    // 4
     union {
         int n;
-        char *v;
+        char *v;            // name or node, fn, struct etc in short term until btypes can handle them
         double d;
     } u;                    // 4 | 8 | 8 = 8
 };
@@ -283,7 +282,7 @@ struct Symb {
 struct NameType {
     char *name;             // 8
     struct NameType *next;  // 8
-    enum btyp btyp;           // 4
+    enum btyp btyp;         // 4
 };
 
 
@@ -339,27 +338,21 @@ int g_logging_level = info;     // OPEN: add filter as well as level?
 enum {
     NGlo = 256,
     NVar = 512,
-    NString = 32,
-};
-struct Variable {
-    char v[NString];    //32
-    enum btyp btyp;
-    int glo;
+    SYM_NAME_MAX = 32,
 };
 
-int oglo;
+int oglo_seed = 1;              // 0 is reserved to mean a local variable - wasting slots below
 char srcFfn[1000];              // should be long enough for a filename
-char *globals[NGlo];
-struct Variable varh[NVar];     // hash table of variables - current locals and globals
-Arena strings;                  // literal strings
-Arena idents;                   // local identifiers
-ArenaState savedidents;
-Arena nodes;
-Symb varBuf[1];
-char varnameBuf[NString];
+char * data_defs[NGlo];          // holds qbe src for data definition statements
+int i_ellipsis[NGlo];
 
-int tmp = SEED_START;           // seed for temporary variables in a function
-int lbl = SEED_START;           // seed for labels
+Buckets all_strings;
+BucketsCheckpoint idents_checkpoint;
+Buckets nodes;
+
+
+int tmp_seed = SEED_START;
+int lbl_seed = SEED_START;
 
 FILE *of;
 FILE *inf;
@@ -367,25 +360,42 @@ int isrcline = 1;
 
 
 
-void varclr() {
+// ---------------------------------------------------------------------------------------------------------------------
+// SYMBOL TABLE
+// ---------------------------------------------------------------------------------------------------------------------
+
+struct {
+    char name[SYM_NAME_MAX];       // name 32
+    enum btyp btyp;
+    int glo;
+}
+_symtable[NVar];                // hash table of all defined variables - i.e. current locals and globals
+Symb _tsym[1];
+char _symnamebuf[SYM_NAME_MAX];
+
+void symclr() {
     for (unsigned h=0; h<NVar; h++)
-        if (!varh[h].glo) varh[h].v[0] = 0;     // set first char to NULL
-    tmp = SEED_START;
-    resetToCheckpoint(&idents, &savedidents);
+        if (!_symtable[h].glo) _symtable[h].name[0] = 0;     // set first char to NULL
 }
 
-void varadd(char *v, int glo, enum btyp btyp) {
-    unsigned h0 = hash(v);
+unsigned _hash(char *s) {
+    unsigned h = 42;
+    while (*s) h += 11 * h + *s++;
+    return h % NVar;
+}
+
+void symadd(char *name, int glo, enum btyp btyp) {
+    unsigned h0 = _hash(name);
     unsigned h = h0;
     do {
-        if (varh[h].v[0] == 0) {
-            strcpy(varh[h].v, v);
-            varh[h].glo = glo;
-            varh[h].btyp = btyp;
+        if (_symtable[h].name[0] == 0) {
+            strncpy(_symtable[h].name, name, SYM_NAME_MAX);
+            _symtable[h].glo = glo;
+            _symtable[h].btyp = btyp;
             return;
         }
-        if (strcmp(varh[h].v, v) == 0) {
-            PP(error, "%s is already defined\n", varh[h].v);
+        if (strcmp(_symtable[h].name, name) == 0) {
+            PP(error, "%s is already defined\n", _symtable[h].name);
             die("double definition");
         }
         h = (h+1) % NVar;
@@ -393,37 +403,33 @@ void varadd(char *v, int glo, enum btyp btyp) {
     die("too many variables");
 }
 
-Symb * varget(char *v) {
-    unsigned h0 = hash(v);
+Symb * symget(char *name) {
+    unsigned h0 = _hash(name);
     unsigned h = h0;
     do {
-        if (strcmp(varh[h].v, v) == 0) {
-            if (!varh[h].glo) {
-                varBuf->t = Var;
-                strcpy(varnameBuf, v);
-                varBuf->u.v = varnameBuf;
-            } else {
-                varBuf->t = Glo;
-                varBuf->u.n = varh[h].glo;
+        if (strcmp(_symtable[h].name, name) == 0) {
+            _tsym->btyp = _symtable[h].btyp;
+            if (_symtable[h].glo) {
+                _tsym->t = Glo;
+                _tsym->u.n = _symtable[h].glo;
             }
-            varBuf->btyp = varh[h].btyp;
-            return varBuf;
+            else {
+                _tsym->t = Var;
+                strncpy(_symnamebuf, name, SYM_NAME_MAX);
+                _tsym->u.v = _symnamebuf;
+            }
+            return _tsym;
         }
         h = (h+1) % NVar;
-    } while (h != h0 && varh[h].v[0] != 0);
+    } while (h != h0 && _symtable[h].name[0] != 0);
     return 0;
 }
+
 
 
 // ---------------------------------------------------------------------------------------------------------------------
 // HELPERS
 // ---------------------------------------------------------------------------------------------------------------------
-
-unsigned hash(char *s) {
-    unsigned h = 42;
-    while (*s) h += 11 * h + *s++;
-    return h % NVar;
-}
 
 void assertTok(Node *n, char* varname, enum tok tok, int lineno) {
     if (n->tok != tok) die("%s->tok != %s @ %d", varname, toktopp[tok], lineno);
@@ -434,7 +440,7 @@ void assertExists(void *p, char* varname, int lineno) {
 }
 
 Node * node(int tok, Node *l, Node *r, int lineno) {
-    Node *n = allocInArena(&nodes, sizeof *n, alignof (n));
+    Node *n = allocInBuckets(&nodes, sizeof *n, alignof (n));
     n->tok = tok;
     n->l = l;
     n->r = r;
@@ -503,11 +509,11 @@ void PP(int level, char *msg, ...) {
 
 void PPbtyp(int level, enum btyp t) {
     if (level & g_logging_level) {
-        while (t && 0xFFFFFF00) {
+        while (t & 0xFFFFFF00) {
             fprintf(stderr, "*");
             t >>= 8;
         }
-        fprintf(stderr, btyptopp[t]);
+        fprintf(stderr, "%s", btyptopp[t]);
     }
 }
 
@@ -528,9 +534,10 @@ void scanLineAndSrcFfn() {
 
 void incLine() {isrcline++;}
 
-int reserve(int n) {int l = lbl; lbl += n; return l;}
+int reserve_lbl(int n) {int l = lbl_seed; lbl_seed += n; return l;}
 
-int reserveTmp() {return tmp++;}
+int reserve_tmp() {return tmp_seed++;}
+int reserve_glo() {return oglo_seed++;}
 
 
 #endif //MINC_MINC_H
