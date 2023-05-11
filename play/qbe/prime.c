@@ -1,7 +1,7 @@
-// #include <stdio.h>
+#include <stdio.h>>
 
-main() {
-	int n;  int t;  int c;  int p;
+int main() {
+	int n, t, c, p;
 	c = 0;
 	n = 2;
 	while (n < 5000) {

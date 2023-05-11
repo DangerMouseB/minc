@@ -1,9 +1,15 @@
-void *malloc();
+#include <stdlib.h>
+#include <stdio.h>
 
-main() {
-	int n;  int nv;  int c;  int cmax;  int *mem;
+int main() {
+	int n;
+	int nv;
+	int c;
+	int cmax;
+	int *mem;
 
 	mem = malloc(sizeof(int) * 4000);
+
 	cmax = 0;
 	for (nv = 1; nv < 1000; nv++) {
 		n = nv;

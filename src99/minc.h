@@ -8,12 +8,24 @@
 #include <stdalign.h>
 #include "aj.h"
 
-#define SEED_START 1
 
-
-// C and QBE IR
-
+// code gen constants - PVAR is the point to the memory that backs a C variable
+#define GLOBAL  "$g"
+#define TEMP    "%%."
+#define PVAR    "%%_"
+#define LABEL   "@"
 #define INDENT "\t"
+
+
+// compiler constants (enum so get in debugger)
+enum {
+    NGlo = 256,
+    NVar = 512,
+    SYM_NAME_MAX = 32,
+    TMP_START = 1,
+    LBL_START = 1,
+};
+
 
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -24,7 +36,7 @@
 #define _hc1 0
 #define _hc2 20
 
-enum btyp{
+enum btyp {
     B_ILLEGAL = 0,          // to catch bugs
     B_U8  = _hc1+1,         // char, unsigned char
     B_U16 = _hc1+2,         // unsigned short
@@ -149,7 +161,6 @@ enum tok {
     OP_BINV     = _expr+10,         // ~ need to use xor
     OP_NOT      = _expr+11,         // !
     OP_ATTR     = _expr+12,         // e.g. x.name
-    OP_INDEX    = _expr+13,         // e.g. xs[0]
 
     IDENT       = _expr+14,
     OP_ADDR     = _expr+15,         // &
@@ -197,6 +208,8 @@ enum tok {
     Ret         = _stmt+12,
     Seq         = _stmt+13,
     Do          = _stmt+14,
+    DeclVar     = _stmt+15,
+    DeclVars    = _stmt+16,
 
 
     // parse tree construction
@@ -237,13 +250,14 @@ static char *toktopp[] = {
         [OP_EQ] = "OP_EQ",              [OP_NE] = "OP_NE",              [OP_LE] = "OP_LE",              [OP_LT] = "OP_LT",
         [OP_AND] = "OP_AND",            [OP_OR] = "OP_OR",              [OP_NOT] = "OP_NOT",            [OP_BAND] = "OP_BAND",
         [OP_BOR] = "OP_BOR",            [OP_BINV] = "OP_BINV",          [OP_BXOR] = "OP_BXOR",          [OP_IIF] = "OP_IIF",
-        [OP_TF] = "OP_TF",              [IDENT] = "IDENT",              [OP_ATTR] = "OP_ATTR",          [OP_INDEX] = "OP_INDEX",
+        [OP_TF] = "OP_TF",              [IDENT] = "IDENT",              [OP_ATTR] = "OP_ATTR",
         [OP_ADDR] = "OP_ADDR",          [OP_DEREF] = "OP_DEREF",        [OP_INC] = "OP_INC",            [OP_DEC] = "OP_DEC",
         [OP_ASSIGN] = "OP_ASSIGN",      [OP_NEG] = "OP_NEG",
         [If] = "If",                    [IfElse] = "IfElse",            [Else] = "Else",                [While] = "While",
         [Select] = "Select",            [Case] = "Case",                [Default] = "Default",          [Goto] = "Goto",
         [Continue] = "Continue",        [Break] = "Break",              [Ret] = "Ret",                  [Seq] = "Seq",
-        [Do] = "Do",                    [T_TYPE_NAME] = "T_TYPE_NAME",  [T_TYPEDEF] = "T_TYPEDEF",      [T_EXTERN] = "T_EXTERN",
+        [Do] = "Do",                    [DeclVar] = "DeclVar",          [DeclVars] = "DeclVars",
+        [T_TYPE_NAME] = "T_TYPE_NAME",  [T_TYPEDEF] = "T_TYPEDEF",      [T_EXTERN] = "T_EXTERN",
         [T_STATIC] = "T_STATIC",        [T_AUTO] = "T_AUTO",            [T_REGISTER] = "T_REGISTER",    [T_STRUCT] = "T_STRUCT",
         [T_UNION] = "T_UNION",          [T_CONST] = "T_CONST",          [T_RESTRICT] = "T_RESTRICT",    [T_VOLATILE] = "T_VOLATILE",
         [T_INLINE] = "T_INLINE",        [T_VOID] = "T_VOID",            [T_CHAR] = "T_CHAR",            [T_SHORT] = "T_SHORT",
@@ -263,22 +277,31 @@ static char *toktopp[] = {
 };
 
 
+// AST, Parse Tree and AST Symbols
+
+typedef struct Node Node;
+typedef struct Symb Symb;
+
 struct Symb {
+    enum {                  // 4
+        Nul = 0,            // the null set, none, etc, uninitialised like the null pointer
+        Con = 1,            // constant - integer, double, string with type btyp
+        Tmp = 2,            // qbe temporary - hidden from user
+        Var = 3,            // local variable, with type btyp
+        Glo = 4,            // global variable, with type btyp
+        Fn  = 5,            // function, with type btyp
+    } t;
     enum btyp btyp;         // 4 (upto ***<type>)
-    enum {
-        Con,                // constant
-        Tmp,                // temporary
-        Var,                // variable
-        Glo,                // global
-    } t;                    // 4
-    union {
-        int n;
-        char *v;            // name or node, fn, struct etc in short term until btypes can handle them
-        double d;
-    } u;                    // 4 | 8 | 8 = 8
+    union {                 // 8
+        int n;              // oglo, or integer constant
+        char *v;            // string constant, name of fn or variable (and in short term structs, unions, typedefs etc) OPEN: change v to name
+//        Node *pn;           // pointer to a node
+        double d;           // double constant
+    } u;
 };
 
 
+// list of name types
 struct NameType {
     char *name;             // 8
     struct NameType *next;  // 8
@@ -293,7 +316,7 @@ struct NameType {
 // runtime here
 // see https://peps.python.org/pep-3123/
 //struct TV {
-//    enum tok t;
+//    enum tok tok;
 //};
 
 struct Node {               // 40 bytes
@@ -307,16 +330,15 @@ struct Node {               // 40 bytes
 //#define _t(o)    (((TV*)(o))->t)
 
 
-// https://learn.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=msvc-170
-// https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
-struct Func {
-    unsigned int attrs;     // 4  inline, __cdecl, __stdcall, __fastcall, __vectorcall, exported, etc
-    unsigned int rRet;      // 4
-    struct Node * tArgs;    // 8
-};
+//// https://learn.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=msvc-170
+//// https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
+//struct Func {
+//    unsigned int attrs;     // 4  inline, __cdecl, __stdcall, __fastcall, __vectorcall, exported, etc
+//    unsigned int rRet;      // 4
+//    struct Node * tArgs;    // 8
+//};
 
-typedef struct Node Node;
-typedef struct Symb Symb;
+
 typedef struct TLLHead TLLHead;
 
 typedef struct NameType NameType;
@@ -334,29 +356,36 @@ enum {
 int g_logging_level = info;     // OPEN: add filter as well as level?
 
 
-// housekeeping
-enum {
-    NGlo = 256,
-    NVar = 512,
-    SYM_NAME_MAX = 32,
-};
-
-int oglo_seed = 1;              // 0 is reserved to mean a local variable - wasting slots below
-char srcFfn[1000];              // should be long enough for a filename
-char * data_defs[NGlo];          // holds qbe src for data definition statements
-int i_ellipsis[NGlo];
-
+// memory managers
 Buckets all_strings;
 BucketsCheckpoint idents_checkpoint;
 Buckets nodes;
 
 
-int tmp_seed = SEED_START;
-int lbl_seed = SEED_START;
+// label generation
+int tmp_seed = TMP_START;
+int lbl_seed = LBL_START;
 
-FILE *of;
-FILE *inf;
-int isrcline = 1;
+
+// i/o streams
+FILE *inf;                      // input stream, e.g. stdio or a file
+FILE *of;                       // output stream, e.g. stdout
+char srcFfn[1000];              // should be long enough for a filename OPEN: use a memory manager when have a string api
+int isrcline = 1;               // current source line being parsed
+
+
+// the literal integer 0
+static Node *z;
+
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// STORAGE FOR GLOBALS
+// ---------------------------------------------------------------------------------------------------------------------
+
+int next_oglo = 1;              // 0 is reserved to mean a local variable - wasting slots below
+Symb globals[NGlo];             // global literal strings, variables and functions
+int i_ellipsis[NGlo];           // OPEN: use a B_FN to properly capture the signature
 
 
 
@@ -365,9 +394,9 @@ int isrcline = 1;
 // ---------------------------------------------------------------------------------------------------------------------
 
 struct {
-    char name[SYM_NAME_MAX];       // name 32
-    enum btyp btyp;
-    int glo;
+    char name[SYM_NAME_MAX];        // 32
+    enum btyp btyp;                 // 4
+    int glo;                        // 4 - if it's a global it's offset (0 is reserved to mean local)
 }
 _symtable[NVar];                // hash table of all defined variables - i.e. current locals and globals
 Symb _tsym[1];
@@ -449,6 +478,7 @@ Node * node(int tok, Node *l, Node *r, int lineno) {
 }
 
 Node * bindl(Node *n, Node *l, int lineno) {
+    if (!n) return l;
     if (n->l != 0) {
         PP(parse, "bindl from @%d", lineno);
         die("node.l already bound");
@@ -458,6 +488,7 @@ Node * bindl(Node *n, Node *l, int lineno) {
 }
 
 Node * bindr(Node *n, Node *r, int lineno) {
+    if (!n) return r;
     if (n->r != 0) {
         PP(parse, "bindr from @%d", lineno);
         die("2nd arg of fn already bound");
@@ -537,7 +568,7 @@ void incLine() {isrcline++;}
 int reserve_lbl(int n) {int l = lbl_seed; lbl_seed += n; return l;}
 
 int reserve_tmp() {return tmp_seed++;}
-int reserve_glo() {return oglo_seed++;}
+int reserve_oglo() {return next_oglo++;}
 
 
 #endif //MINC_MINC_H

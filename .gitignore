@@ -26,9 +26,9 @@ play/handcrafted
 
 play/libcrlf.a
 
-play/queen
+play/qbe/queen
 
-play/queen.q
+play/qbe/queen.q
 
 play/tmp
 

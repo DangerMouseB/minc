@@ -1,4 +1,4 @@
-#include "fred.h"
+#include <stdio.h>
 
 int main() {
 	int i, a, b, c, d;

@@ -1,4 +1,5 @@
-#include "fred.h"
+#include <stdlib.h>
+#include <stdio.h>
 
 int N;
 int **b;

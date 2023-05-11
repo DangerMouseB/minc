@@ -1,0 +1,230 @@
+#ifndef MINC_QBE_H
+#define MINC_QBE_H
+
+#include "minc.h"
+
+int emitstmt(Node *n, int b);
+Symb emitexpr(Node *n);
+char irtyp(enum btyp btyp);
+
+
+void emitlocaldecl(Node *decl) {
+    int s;
+    s = SIZE(decl->s.btyp );
+    putq(INDENT PVAR "%s =l alloc%d %d\n", decl->l->s.u.v, s, s);
+    if (decl->r) emitexpr(node(OP_ASSIGN, decl->l, decl->r, __LINE__));
+}
+
+void emitglobals() {
+    putq("\n# GLOBAL VARIABLES\n");
+    for (int oglo = 0; oglo < next_oglo; oglo++)
+        if (globals[oglo].t == Glo) putq("data " GLOBAL "%d = { %c 0 }\n", oglo, irtyp(globals[oglo].btyp));
+    putq("\n# STRING CONSTANTS\n");
+    for (int oglo = 0; oglo < next_oglo; oglo++)
+        if ((globals[oglo].t == Con) && (globals[oglo].btyp == B_CHARS)) putq("data " GLOBAL "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
+}
+
+void emitsymb(Symb s) {
+    switch (s.t) {
+        case Tmp:
+            putq(TEMP "%d", s.u.n);
+            break;
+        case Var:
+            putq(PVAR "%s", s.u.v);
+            break;
+        case Glo:
+            putq(GLOBAL "%d", s.u.n);
+            break;
+        case Con:
+            putq("%d", s.u.n);
+            break;
+    }
+}
+
+void emitload(Symb d, Symb s) {
+    putq(INDENT);
+    emitsymb(d);
+    putq(" =%c load%c ", irtyp(d.btyp), irtyp(d.btyp));
+    emitsymb(s);
+    putq("\n");
+}
+
+void emitcall(Node *n, Symb *sr) {
+    Node *a;  int iEllipsis, iArg;  Symb *s;
+    char *name = n->l->s.u.v;
+    if (!(s=symget(name))) die("undeclared function %s", name);
+    if (s->t != Glo) die("programmer error @ %d", __LINE__);
+    if (KIND(s->btyp) != B_FN) die("programmer error @ %d", __LINE__);
+    iEllipsis = i_ellipsis[s->u.n];
+    sr->btyp = DREF(s->btyp);               // functions are stored shifted with type B_FN
+    for (a=n->r; a; a=a->r)
+        a->s = emitexpr(a->l);
+    putq(INDENT);
+    if (sr->btyp == B_VOID) {
+        putq("call $%s(", name);
+    }
+    else {
+        emitsymb(*sr);
+        putq(" =%c call $%s(", irtyp(sr->btyp), name);
+    }
+    a = n->r; iArg = 1;
+    while (a) {
+        if (iArg == iEllipsis) putq("..., ");
+        putq("%c ", irtyp(a->s.btyp));
+        emitsymb(a->s);
+        a = a->r;
+        if (a) putq(", ");
+        iArg++;
+    }
+    putq(")\n");
+}
+
+void emitboolop(Node *n, int tn, char *tlabel, int fn, char*flabel) {
+    Symb s;  int l;
+    switch (n->tok) {
+        default:
+            s = emitexpr(n); /* OPEN: insert comparison to 0 with proper type */
+            putq(INDENT "jnz ");
+            emitsymb(s);
+            putq(", " LABEL "%s.%d, " LABEL "%s.%d\n", tlabel, tn, flabel, fn);
+            break;
+        case OP_OR:
+            l = reserve_lbl(1);
+            emitboolop(n->l, tn, tlabel, l, "or.false");
+            putq(LABEL "or.false.%d\n", l);
+            emitboolop(n->r, tn, tlabel, fn, flabel);
+            break;
+        case OP_AND:
+            l = reserve_lbl(1);
+            emitboolop(n->l, l, "and.true", fn, flabel);
+            putq(LABEL "and.true.%d\n", l);
+            emitboolop(n->r, tn, tlabel, fn, flabel);
+            break;
+    }
+}
+
+void emitbreak(Node *n, int b) {
+    if (b < 0) die("break not in loop");
+    putq(INDENT "jmp " LABEL "false.%d\n", b);
+}
+
+void emitret(Node *n) {
+    Symb x;
+    if (n->l) {
+        x = emitexpr(n->l);
+        putq(INDENT "ret ");
+        emitsymb(x);
+    } else
+        putq(INDENT "ret");
+    putq("\n");
+}
+
+void emitif(Node *n, int b) {
+    int l;
+    putq(LABEL "if.%d\n", reserve_lbl(1));
+    l = reserve_lbl(2);
+    emitboolop(n->l, l, "true", l+1, "false");
+    putq(LABEL "true.%d\n", l);
+    emitstmt(n->r, b);
+    putq(LABEL "false.%d\n", l+1);
+}
+
+int emitifelse(Node *n, int b) {
+    int l, r;  Node *e;
+    putq(LABEL "if.else.%d\n", reserve_lbl(1));
+    l = reserve_lbl(3);
+    emitboolop(n->l, l, "true", l+1, "false");
+    putq(LABEL "true.%d\n", l);
+    e = n->r;
+    if (!(r=emitstmt(e->l, b)))
+        putq(INDENT "jmp " LABEL "L.%d\n", l+2);
+    putq(LABEL "false.%d\n", l+1);
+    if (!(r &= emitstmt(e->r, b)))
+        putq(LABEL "L.%d\n", l+2);
+    return e->r && r;
+}
+
+void emitwhile(Node *n) {
+    int l;
+    l = reserve_lbl(3);
+    putq(LABEL "while.cond.%d\n", l);
+    emitboolop(n->l, l+1, "while.body", l+2, "while.end");
+    putq(LABEL "while.body.%d\n", l+1);
+    if (!emitstmt(n->r, l+2))
+        putq(INDENT "jmp " LABEL "while.cond.%d\n", l);
+    putq(LABEL "while.end.%d\n", l+2);
+}
+
+void emitfunc(enum btyp t, char *fnname, NameType *params, Node *stmts) {
+    NameType *p;  int i, m;
+    PP(emit, "emitFunc: %s", fnname);
+
+    symadd(fnname, reserve_oglo(), FUNC(t));
+    if (t == B_VOID)
+        putq("export function $%s(", fnname);
+    else
+        putq("export function %c $%s(", irtyp(t), fnname);
+    if ((p=params))
+        do {
+            symadd(p->name, 0, p->btyp);
+            putq("%c ", irtyp(p->btyp));
+            putq(TEMP "%d", reserve_tmp());
+            p = p->next;
+            if (p) putq(", ");
+        } while (p);
+    putq(") {\n");
+    putq(LABEL "start.%d\n", reserve_lbl(1));
+    for (i=TMP_START, p=params; p; i++, p=p->next) {
+        m = SIZE(p->btyp);
+        putq(INDENT PVAR "%s =l alloc%d %d\n", p->name, m, m);
+        putq(INDENT "store%c " TEMP "%d", irtyp(p->btyp), i);
+        putq(", " PVAR "%s\n", p->name);
+    }
+    putq(LABEL "body.%d\n", reserve_lbl(1));
+    if (!emitstmt(stmts, -1)) putq(INDENT "ret\n");    // for the case of a void function with no return statement
+    putq("}\n\n");
+}
+
+int emitstmt(Node *n, int b) {
+    if (!n) return 0;
+    PP(emit, "%s", toktopp[n->tok]);
+
+    switch (n->tok) {
+        case DeclVars:
+            emitlocaldecl(n->l);
+            emitstmt(n->r, b);
+            return 0;
+        case Ret:
+            emitret(n);
+            return 1;
+        case Break:
+            emitbreak(n, b);
+            return 1;
+        case Seq:
+            return emitstmt(n->l, b) || emitstmt(n->r, b);
+        case If:
+            emitif(n, b);
+            return 0;
+        case IfElse:
+            return emitifelse(n, b);
+        case While:
+            emitwhile(n);
+            return 0;
+        case Label:
+        case Else:
+        case Select:
+        case Case:
+        case Continue:
+        case Goto:
+        case Do:
+            nyi("%d:\"%s\" @ %d", n->tok, toktopp[n->tok], n->lineno);
+        default:
+            if ((OP_EXPR_START <= n->tok) && (n->tok <= OP_EXPR_END))
+                emitexpr(n);
+            else
+                die("invalid statement %d:\"%s\" @ %d", n->tok, toktopp[n->tok], n->lineno);
+            return 0;
+    }
+}
+
+#endif //MINC_MINC_H

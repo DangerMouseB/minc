@@ -1,9 +1,7 @@
-#include "fred.h"
-//#define FMT_FLOAT "%f"
+#include <stdio.h>
+#include <stdlib.h>
 
-//typedef char * cstar;
-
-int Q,  nSolutions;
+int Q, nSolutions;
 
 void print(int **board) {
 	int i, j;
