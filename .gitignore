@@ -6,32 +6,26 @@ _qbe
 yacc.dSYM/
 _minc.dSYM/
 _minc99.dSYM/
+test_arena.dSYM/
+binary_play.dSYM/
+.idea/
+.DS_Store
 
 y.*
 *.o
 *.p
 *.s
 
-.DS_Store
-
 queen2
 prime
 knight
 
-.idea/
-
 test_arena
 
 play/handcrafted
-
 play/libcrlf.a
-
 play/qbe/queen
-
 play/qbe/queen.q
-
 play/tmp
-
 play/tmp.q
-
-test_arena.dSYM/Contents/Info.plist
+binary_play

@@ -432,6 +432,25 @@ void symadd(char *name, int glo, enum btyp btyp) {
     die("too many variables");
 }
 
+void symset(char *name, int glo, enum btyp btyp) {
+    unsigned h0 = _hash(name);
+    unsigned h = h0;
+    do {
+        if (_symtable[h].name[0] == 0) {
+            PP(error, "%s is not defined\n", _symtable[h].name);
+            die("not defined");
+        }
+        if (strcmp(_symtable[h].name, name) == 0) {
+            _symtable[h].glo = glo;
+            _symtable[h].btyp = btyp;
+            return;
+        }
+        h = (h+1) % NVar;
+    } while(h != h0);
+    PP(error, "%s is not defined\n", _symtable[h].name);
+    die("not defined");
+}
+
 Symb * symget(char *name) {
     unsigned h0 = _hash(name);
     unsigned h = h0;
