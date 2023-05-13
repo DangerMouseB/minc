@@ -37,7 +37,7 @@ enum {
 #define _hc2 20
 
 enum btyp {
-    B_ILLEGAL = 0,          // to catch bugs
+    B_NAT = 0,          // to catch bugs
     B_U8  = _hc1+1,         // char, unsigned char
     B_U16 = _hc1+2,         // unsigned short
     B_U32 = _hc1+3,         // signed int
@@ -66,7 +66,7 @@ enum btyp {
 };
 
 static char *btyptopp[] = {
-        [B_ILLEGAL] = "B_ILLEGAL",
+        [B_NAT] = "B_NAT",
         [B_U8] = "B_U8",                [B_U16] = "B_U16",              [B_U32] = "B_U32",              [B_U64] = "B_U64",
         [B_I8] = "B_I8",                [B_I16] = "B_I16",              [B_I32] = "B_I32",              [B_I64] = "B_I64",
         [B_F32] = "B_F32",              [B_F64] = "B_F64",              [B_CHARS] = "B_CHARS",          [B_N_CHARS] = "B_N_CHARS",

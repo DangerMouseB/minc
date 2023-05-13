@@ -1,4 +1,4 @@
-#include "minc.h"
+#include "../minc.h"
 
 void checkIEq(long act, long exp, unsigned long lineno, char *msg, ...) {
     if (act != exp) {

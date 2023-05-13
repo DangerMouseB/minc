@@ -17,12 +17,13 @@ void fred(unsigned long n, int i) {
 }
 
 
-// In C programming language, a computation of unsigned integer values can never overflow, this means that
+// "In C programming language, a computation of unsigned integer values can never overflow, this means that
 // UINT_MAX + 1 yields zero. More precise, according to the C standard unsigned integer operations do wrap
-// around, the C Standard, 6.2.
+// around, the C Standard, 6.2."
 
-// In contrast, the C standard says that signed integer overflow leads to undefined behavior where a
-// program can do anything, including dumping core or overrunning a buffer.
+// "In contrast, the C standard says that signed integer overflow leads to undefined behavior where a
+// program can do anything, including dumping core or overrunning a buffer."
+
 
 int main() {
     unsigned char a, b; signed char c, d;  unsigned short e, f; signed short g, h;
@@ -73,27 +74,5 @@ int main() {
     g = g + g;  fred(g, ex++);                  // -2
 
 
-//    a = 0, b = 1;  fred(a+b, ex++);
-//    a = 0, b = -1;  fred(a+b, ex++);
-//    a = 0, b = -2;  fred(a+b, ex++);
-//    a = 127, b = 0;  fred(a+b, ex++);
-//    a = 127, b = 1;  fred(a+b, ex++);
-//    a = 127, b = 2;  fred(a+b, ex++);
-//    a = 127, b = 128;  fred(a+b, ex++);
-//    a = 127, b = 129;  fred(a+b, ex++);
-//    a = 255, b = 1;  fred(a+b, ex++);
-//    putc('\n', stdout);
-//
-//    printf("signed char - ub\n", 1);
-//    c = 0, d = 1;  fred(c+d, ex++);
-//    c = 0, d = -1;  fred(c+d, ex++);
-//    c = 0, d = -2;  fred(c+d, ex++);
-//    c = 127, d = 0;  fred(c+d, ex++);
-//    c = 127, d = 1;  fred(c+d, ex++);
-//    c = 127, d = 2;  fred(c+d, ex++);
-//    c = 127, d = 128;  fred(c+d, ex++);
-//    c = 127, d = 129;  fred(c+d, ex++);
-//    c = 127, d = 130;  fred(c+d, ex++);
-//    c = 127, d = 1;  fred(a+b, ex++);
 
 }

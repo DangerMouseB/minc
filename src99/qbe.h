@@ -3,21 +3,42 @@
 
 #include "minc.h"
 
+
+// helpers to emit QBE IR from an AST and a symbol table
+// needs knowledge of Node, Symb and btyp and the symbol table
+
+static const char neltl[] = {OP_NE, OP_EQ, OP_LT, OP_LE, };
+static char *otoa[] = {
+        [OP_ADD] = "add",
+        [OP_SUB] = "sub",
+        [OP_MUL] = "mul",
+        [OP_DIV] = "div",
+        [OP_MOD] = "rem",
+        [OP_BAND] = "and",
+        [OP_LT] = "cslt",  /* meeeeh, wrong for pointers! */
+        [OP_LE] = "csle",
+        [OP_EQ] = "ceq",
+        [OP_NE] = "cne",
+};
+
+
 int emitstmt(Node *n, int b);
 Symb emitexpr(Node *n);
-void i8_to_i16(Symb *s);        // INTEGER CONVERSIONS
-void i8_to_i32(Symb *s);
-void i8_to_i64(Symb *s);
-void u8_to_u64(Symb *s);
-void i16_to_i32(Symb *s);
-void i16_to_i64(Symb *s);
-void u16_to_u64(Symb *s);
-void i32_to_i64(Symb *s);
-void u32_to_u64(Symb *s);
-void i8_to_f64(Symb *s);        // FLOAT CONVERSIONS
-void i16_to_f64(Symb *s);
-void i32_to_f64(Symb *s);
-void i64_to_f64(Symb *s);
+enum btyp prom(enum tok tok, Symb *l, Symb *r);
+
+Symb i8_to_i16(Symb s);        // INTEGER CONVERSIONS
+Symb i8_to_i32(Symb s);
+Symb i8_to_i64(Symb s);
+Symb u8_to_u64(Symb s);
+Symb i16_to_i32(Symb s);
+Symb i16_to_i64(Symb s);
+Symb u16_to_u64(Symb s);
+Symb i32_to_i64(Symb s);
+Symb u32_to_u64(Symb s);
+Symb i8_to_f64(Symb s);        // FLOAT CONVERSIONS
+Symb i16_to_f64(Symb s);
+Symb i32_to_f64(Symb s);
+Symb i64_to_f64(Symb s);
 
 
 // we use w (32 bit) temps except for B_U64 and B_I64 which uses l (64 bit) temps
@@ -109,15 +130,6 @@ void emitlocaldecl(Node *decl) {
     s = SIZE(decl->s.btyp );
     putq(INDENT PVAR "%s =l alloc%d %d\n", decl->l->s.u.v, s, s);
     if (decl->r) emitexpr(node(OP_ASSIGN, decl->l, decl->r, __LINE__));
-}
-
-void emitglobals() {
-    putq("\n# GLOBAL VARIABLES\n");
-    for (int oglo = 0; oglo < next_oglo; oglo++)
-        if (globals[oglo].t == Glo) putq("data " GLOBAL "%d = { %c 0 }\n", oglo, vtyp(globals[oglo].btyp));
-    putq("\n# STRING CONSTANTS\n");
-    for (int oglo = 0; oglo < next_oglo; oglo++)
-        if ((globals[oglo].t == Con) && (globals[oglo].btyp == B_CHARS)) putq("data " GLOBAL "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
 }
 
 void emitsymb(Symb s) {
@@ -324,124 +336,332 @@ int emitstmt(Node *n, int b) {
     }
 }
 
+Symb emitexpr(Node *n) {
+    Symb sr, s0, s1, st;  enum tok o;  int l;  char ty[2];
 
-void i8_to_i16(Symb *s) {
-    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
-    emitsymb(*s);
-    putq("\n");
-    s->t = Tmp;
-    s->btyp = B_I16;
-    s->u.n = reserve_tmp();
+    sr.t = Tmp;
+    sr.u.n = reserve_tmp();
+    sr.btyp = B_NAT;
+
+    switch (n->tok) {
+
+        case OP_OR:
+        case OP_AND:
+            l = reserve_lbl(3);
+            emitboolop(n, l, "bool.true", l+1, "bool.false");
+            putq(LABEL "bool.true.%d\n", l);
+            putq(INDENT "jmp " LABEL "bool.end.%d\n", l+2);
+            putq(LABEL "bool.false.%d\n", l+1);
+            putq(INDENT "jmp " LABEL "bool.end.%d\n", l+2);
+            putq(LABEL "bool.end.%d\n", l+2);
+            putq(INDENT);
+            sr.btyp = B_I32;
+            emitsymb(sr);
+            putq(" =w phi " LABEL "bool.true.%d 1, " LABEL "bool.false.%d 0\n", l, l+1);
+            break;
+
+        case IDENT:
+            s0 = lval(n);
+            sr.btyp = s0.btyp;
+            emitload(sr, s0);
+            break;
+
+        case LIT_DEC:
+            sr.t = Con;
+            sr.u.d = n->s.u.d;
+            sr.btyp = B_F64;
+            break;
+
+        case LIT_INT:
+            // OPEN: might need literal unsigned long or maybe just L for long
+            sr.t = Con;
+            sr.u.n = n->s.u.n;
+            sr.btyp = n->s.btyp;
+            sr.btyp = B_I32;
+            break;
+
+        case LIT_CHAR:
+            sr.t = Con;
+            sr.u.n = n->s.u.n;
+            sr.btyp = B_CHAR_DEFAULT;
+            break;
+
+        case LIT_STR:
+            sr.t = Glo;
+            sr.u.n = n->s.u.n;
+            sr.btyp = IDIR(B_U8);
+            break;
+
+        case OP_CALL:
+            emitcall(n, &sr);
+            break;
+
+        case OP_DEREF:
+            s0 = emitexpr(n->l);
+            if (KIND(s0.btyp) != B_PTR) die("dereference of a non-pointer");
+            sr.btyp = DREF(s0.btyp);
+            emitload(sr, s0);
+            break;
+
+        case OP_ADDR:
+            sr = lval(n->l);
+            sr.btyp = IDIR(sr.btyp);
+            break;
+
+        case OP_NEG:
+            if (!z) {
+                z = node(LIT_INT, 0, 0, 0);
+                z->s.t = Con;
+                z->s.u.n = 0;
+            }
+            z->s.btyp = B_I8;       // always initialise as can be promoted (which will change the btyp)
+            n->r = n->l;
+            n->l = z;
+            n->tok = OP_SUB;
+            sr = emitexpr(n);
+            break;
+
+        case OP_BINV:
+            nyi("OP_BINV");
+
+        case OP_NOT:
+            nyi("OP_NOT");
+
+        case OP_ASSIGN:
+            // s1 = s0  => store s0, s1
+            // where s1 is qbe type m, i.e. memory, which could be a C variable, struct, array or pointer)
+            // if the storage size of s1 is larger than the storage size of s0 then we need to either zero extend or
+            // sign extend s0.
+            // we only ever store the correct number of bytes from s0 into s1
+            s0 = emitexpr(n->r);
+            if (s0.btyp == B_NAT) {
+                s0 = emitexpr(n->r);
+                die("s0.btyp == B_NAT");
+            }
+            s1 = lval(n->l);        // always memory
+            sr = s0;
+
+            // OPEN: think through how to make this clearer and simpler
+            if (s1.btyp == B_I16 && s0.btyp == B_I8)  s0 = i8_to_i16(s0);
+            if (s1.btyp == B_I32 && s0.btyp == B_I8)  s0 = i8_to_i32(s0);
+            if (s1.btyp == B_I64 && s0.btyp == B_I8)  s0 = i8_to_i64(s0);
+            if (s1.btyp == B_I32 && s0.btyp == B_I16) s0 = i16_to_i32(s0);
+            if (s1.btyp == B_I64 && s0.btyp == B_I16) s0 = i16_to_i64(s0);
+            if (s1.btyp == B_I64 && s0.btyp == B_I32) s0 = i32_to_i64(s0);
+
+            if (s1.btyp == B_I32 && s0.btyp == B_I64 && n->r->tok == LIT_INT) s0.btyp = B_I32;   // HACK - need to figure how to cast LIT_INT properly
+            if (s1.btyp == B_I32 && s0.btyp == B_I64 && n->r->tok == OP_SUB) s0.btyp = B_I32;   // HACK - need to figure how to cast LIT_INT properly
+
+            if (s1.btyp == B_F64 && s0.btyp == B_I8) s0 = i8_to_f64(s0);
+            if (s1.btyp == B_F64 && s0.btyp == B_I16) s0 = i16_to_f64(s0);
+            if (s1.btyp == B_F64 && s0.btyp == B_I32) s0 = i32_to_f64(s0);
+            if (s1.btyp == B_F64 && s0.btyp == B_I64) s0 = i64_to_f64(s0);
+
+            if (
+                    (KIND(s1.btyp) == B_PTR && s0.btyp == IDIR(B_VOID)) ||
+                    ((s1.btyp == IDIR(B_VOID) && KIND(s0.btyp) == B_PTR))
+                    ) {}
+            else {
+                if (s1.btyp != s0.btyp) {
+                    s0 = emitexpr(n->r);
+                    die("invalid assignment");
+                }
+            }
+            // END OPEN:
+
+            putq(INDENT "store%c ", storetyp(s1.btyp));
+            goto emit_s0_s1;
+
+        case OP_INC:
+        case OP_DEC:
+            o = n->tok == OP_INC ? OP_ADD : OP_SUB;    // e.g. x += 1  => x = x + 1
+            st = lval(n->l);
+            s0.t = Tmp;
+            s0.u.n = reserve_tmp();
+            s0.btyp = st.btyp;
+            emitload(s0, st);
+            s1.t = Con;
+            s1.u.n = 1;
+            s1.btyp = st.btyp;
+            goto binop;
+
+        default:
+            // handle the binary ops
+            if ((OP_BIN_START <= n->tok) && (n->tok <= OP_BIN_END)) {
+                s0 = emitexpr(n->l);
+                s1 = emitexpr(n->r);
+                o = n->tok;
+            }
+            else
+                die("%s is not an expression", toktopp[n->tok]);
+
+        binop:
+            // t = op s0 s1
+            sr.btyp = prom(o, &s0, &s1);
+            if (strchr(neltl, n->tok)) {
+                sprintf(ty, "%c", vtyp(sr.btyp));
+                sr.btyp = B_I32;            // OPEN: should be a B_BOOL
+            } else
+                strcpy(ty, "");
+            putq(INDENT);
+            emitsymb(sr);
+            putq(" =%c", vtyp(sr.btyp));
+            putq(" %s%s ", otoa[o], ty);
+        emit_s0_s1:
+            emitsymb(s0);
+            putq(", ");
+            emitsymb(s1);
+            putq("\n");
+            break;
+    }
+    if (n->tok == OP_SUB  &&  KIND(s0.btyp) == B_PTR  &&  KIND(s1.btyp) == B_PTR) {
+        putq(INDENT TEMP "%d =l div ", tmp_seed);
+        emitsymb(sr);
+        putq(", %d\n", SIZE(DREF(s0.btyp)));
+        sr.u.n = reserve_tmp();
+    }
+    if (n->tok == OP_INC  ||  n->tok == OP_DEC) {
+        putq(INDENT "store%c ", storetyp(st.btyp));
+        emitsymb(sr);
+        putq(", ");
+        emitsymb(st);
+        putq("\n");
+        sr = s0;
+    }
+    return sr;
 }
 
-void i8_to_i32(Symb *s) {
+
+Symb i8_to_i16(Symb s) {
     putq(INDENT TEMP "%d =w extsb ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_I32;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_I16;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i8_to_i64(Symb *s) {
+Symb i8_to_i32(Symb s) {
+    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
+    emitsymb(s);
+    putq("\n");
+    s.t = Tmp;
+    s.btyp = B_I32;
+    s.u.n = reserve_tmp();
+    return s;
+}
+
+Symb i8_to_i64(Symb s) {
     putq(INDENT TEMP "%d =l extsb ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_I64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_I64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void u8_to_u64(Symb *s) {
+Symb u8_to_u64(Symb s) {
     putq(INDENT TEMP "%d =l extub ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_U64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_U64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i16_to_i32(Symb *s) {
+Symb i16_to_i32(Symb s) {
     putq(INDENT TEMP "%d =w extsh ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_I32;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_I32;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i16_to_i64(Symb *s) {
+Symb i16_to_i64(Symb s) {
     putq(INDENT TEMP "%d =l extsh ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_I64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_I64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void u16_to_u64(Symb *s) {
+Symb u16_to_u64(Symb s) {
     putq(INDENT TEMP "%d =l extuh ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_U64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_U64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i32_to_i64(Symb *s) {
+Symb i32_to_i64(Symb s) {
     putq(INDENT TEMP "%d =l extsw ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_I64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_I64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void u32_to_u64(Symb *s) {
+Symb u32_to_u64(Symb s) {
     putq(INDENT TEMP "%d =l extuw ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_U64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_U64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i8_to_f64(Symb *s) {
+Symb i8_to_f64(Symb s) {
     i8_to_i64(s);
     putq(INDENT TEMP "%d =d swtof ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_F64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_F64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i16_to_f64(Symb *s) {
+Symb i16_to_f64(Symb s) {
     i16_to_i64(s);
     putq(INDENT TEMP "%d =d swtof ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_F64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_F64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i32_to_f64(Symb *s) {
+Symb i32_to_f64(Symb s) {
     putq(INDENT TEMP "%d =d swtof ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_F64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_F64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
-void i64_to_f64(Symb *s) {
+Symb i64_to_f64(Symb s) {
     putq(INDENT TEMP "%d =d sltof ", tmp_seed);
-    emitsymb(*s);
+    emitsymb(s);
     putq("\n");
-    s->t = Tmp;
-    s->btyp = B_F64;
-    s->u.n = reserve_tmp();
+    s.t = Tmp;
+    s.btyp = B_F64;
+    s.u.n = reserve_tmp();
+    return s;
 }
 
 #endif //MINC_MINC_H

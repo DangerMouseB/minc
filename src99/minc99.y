@@ -48,148 +48,6 @@ void yyerror(char const *);
 
 
 
-enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
-    // OPEN: convert tokens to the correct hardcoded btyp enum
-    enum tok op;  Node *n, *ts;  enum btyp baseType = B_ILLEGAL;  int hasSigned = 0;  int hasUnsigned = 0;  int hasConst = 0;
-    n = ds->l;
-    while (n) {
-        op = (enum tok) n->s.btyp;
-        switch (n->tok) {
-
-            case pt_storage_class_specifier:
-                nyi("pt_function_specifier");
-                break;
-
-            case pt_type_specifier:
-                ts = n;
-                switch (op) {
-                    default:
-                        die("op == %s @ %d", toktopp[op], __LINE__);
-                        // OPEN handle long int and long long, and signed and unsigned
-                    case T_VOID:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_VOID]);
-                        baseType = B_VOID;
-                        break;
-                    case T_CHAR:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_CHAR_DEFAULT]);
-                        baseType = B_CHAR_DEFAULT;
-                        break;
-                    case T_SHORT:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I16]);
-                        baseType = B_I16;
-                        break;
-                    case T_INT:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I32]);
-                        baseType = B_I32;
-                        break;
-                    case T_LONG:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I64]);
-                        baseType = B_I64;
-                        break;
-                    case T_FLOAT:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F32]);
-                        baseType = B_F32;
-                        break;
-                    case T_DOUBLE:
-                        if (baseType != B_ILLEGAL) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F64]);
-                        baseType = B_F64;
-                        break;
-                    case T_UNSIGNED:
-                        if (hasUnsigned) die("unsigned already encountered before unsigned");
-                        if (hasSigned) die("signed already encountered before unsigned");
-                        hasUnsigned = 1;
-                        break;
-                    case T_SIGNED:
-                        if (hasUnsigned) die("unsigned already encountered before signed");
-                        if (hasSigned) die("signed already encountered before signed");
-                        hasSigned = 1;
-                        break;
-                }
-                break;
-
-            case pt_type_qualifier:
-                switch (op) {
-                    default:
-                        die("op == %s @ %d", toktopp[op], __LINE__);
-                    case T_CONST:
-                        if (hasConst) die("const already encountered");
-                        hasConst = 1;
-                        break;
-                }
-                break;
-
-            case pt_function_specifier:
-                nyi("pt_function_specifier");
-                break;
-
-            default:
-                die("here");
-
-        }
-        n = n->r;
-    }
-    if (hasSigned) {
-        switch (baseType) {
-            case B_CHAR_DEFAULT:
-                return baseType = B_I8;
-                break;
-            case B_I16:
-                baseType = B_I16;
-                break;
-            case B_ILLEGAL:
-            case B_I32:
-                baseType = B_I32;
-                break;
-            case B_I64:
-                baseType = B_I64;
-                break;
-            default:
-                die("illegal type - signed %s @ &d", toktopp[op], __LINE__);
-        }
-    }
-    if (hasUnsigned) {
-        switch (baseType) {
-            case B_CHAR_DEFAULT:
-                return baseType = B_U8;
-                break;
-            case B_I16:
-                baseType = B_U16;
-                break;
-            case B_ILLEGAL:
-            case B_U32:
-                baseType = B_U32;
-                break;
-            case B_U64:
-                baseType = B_U64;
-                break;
-            default:
-                die("illegal type - signed %s @ &d", toktopp[op], __LINE__);
-        }
-    }
-    if (hasConst) nyi("const");
-    return baseType;
-}
-
-
-unsigned int pointerise(enum btyp btyp, Node *ptr, int isarray) {
-    // OPEN check for const, volatile, restrict
-    while (ptr) {
-        assertTok(ptr, "ptr", pt_pointer, __LINE__);
-        if (ptr->l->tok == T_PTR) {
-            btyp <<= 8;
-            btyp |= B_PTR;
-        }
-        ptr = ptr->r;
-    }
-    if (isarray) {
-        btyp <<= 8;
-        btyp |= B_PTR;
-    }
-    return btyp;
-}
-
-
-
 // ---------------------------------------------------------------------------------------------------------------------
 // NODE CONSTRUCTION
 // ---------------------------------------------------------------------------------------------------------------------
@@ -303,10 +161,7 @@ Node * mkinitdeclarator(Node *declarator, Node *initializer, int lineno) {
 
 // QBE IR emission
 
-
-
 Symb emitexpr(Node *);
-
 
 enum btyp prom(enum tok tok, Symb *l, Symb *r) {
     Symb *t;  int sz;
@@ -317,13 +172,13 @@ enum btyp prom(enum tok tok, Symb *l, Symb *r) {
         if (l->btyp == B_I64) {
             switch (r->btyp) {
                 case B_I8:
-                    i8_to_i64(r);
+                    *r = i8_to_i64(*r);
                     break;
                 case B_I16:
-                    i16_to_i64(r);
+                    *r = i16_to_i64(*r);
                     break;
                 case B_I32:
-                    i32_to_i64(r);
+                    *r = i32_to_i64(*r);
                     break;
             }
             return B_I64;
@@ -332,13 +187,13 @@ enum btyp prom(enum tok tok, Symb *l, Symb *r) {
         if (r->btyp == B_I64) {
             switch (l->btyp) {
                 case B_I8:
-                    i8_to_i64(l);
+                    *l = i8_to_i64(*l);
                     break;
                 case B_I16:
-                    i16_to_i64(l);
+                    *l = i16_to_i64(*l);
                     break;
                 case B_I32:
-                    i32_to_i64(l);
+                    *l = i32_to_i64(*l);
                     break;
             }
             return B_I64;
@@ -347,10 +202,10 @@ enum btyp prom(enum tok tok, Symb *l, Symb *r) {
         if (l->btyp == B_I32) {
             switch (r->btyp) {
                 case B_I8:
-                    i8_to_i32(r);
+                    *r = i8_to_i32(*r);
                     break;
                 case B_I16:
-                    i16_to_i32(r);
+                    *r = i16_to_i32(*r);
                     break;
             }
             return B_I32;
@@ -359,22 +214,22 @@ enum btyp prom(enum tok tok, Symb *l, Symb *r) {
         if (r->btyp == B_I32) {
             switch (l->btyp) {
                 case B_I8:
-                    i8_to_i32(l);
+                    *l = i8_to_i32(*l);
                     break;
                 case B_I16:
-                    i16_to_i32(l);
+                    *l = i16_to_i32(*l);
                     break;
             }
             return B_I32;
         }
 
         if (l->btyp == B_F64 && r->btyp == B_I32) {
-            i32_to_f64(r);
+            *r = i32_to_f64(*r);
             return B_F64;
         }
 
         if (l->btyp == B_F64 && r->btyp == B_I64) {
-            i64_to_f64(r);
+            *r = i64_to_f64(*r);
             return B_F64;
         }
 
@@ -409,22 +264,22 @@ Scale:
     else {
         switch (r->btyp) {
             case B_I8:
-                i8_to_i64(r);
+                *r = i8_to_i64(*r);
                 break;
             case B_U8:
-                u8_to_u64(r);
+                *r = u8_to_u64(*r);
                 break;
             case B_I16:
-                i16_to_i64(r);
+                *r = i16_to_i64(*r);
                 break;
             case B_U16:
-                u16_to_u64(r);
+                *r = u16_to_u64(*r);
                 break;
             case B_I32:
-                i32_to_i64(r);
+                *r = i32_to_i64(*r);
                 break;
             case B_U32:
-                u32_to_u64(r);
+                *r = u32_to_u64(*r);
                 break;
             default:
                 break;
@@ -438,220 +293,150 @@ Scale:
 }
 
 
-Symb emitexpr(Node *n) {
-    static const char neltl[] = {OP_NE, OP_EQ, OP_LT, OP_LE, };
-    static char *otoa[] = {
-        [OP_ADD] = "add",
-        [OP_SUB] = "sub",
-        [OP_MUL] = "mul",
-        [OP_DIV] = "div",
-        [OP_MOD] = "rem",
-        [OP_BAND] = "and",
-        [OP_LT] = "cslt",  /* meeeeh, wrong for pointers! */
-        [OP_LE] = "csle",
-        [OP_EQ] = "ceq",
-        [OP_NE] = "cne",
-    };
-    Symb sr, s0, s1, st;
-    enum tok o;
-    int l;
-    char ty[2];
-
-    sr.t = Tmp;
-    sr.u.n = reserve_tmp();
-    sr.btyp = B_ILLEGAL;
-
-    switch (n->tok) {
-
-        // both these short circuit
-        case OP_OR:
-        case OP_AND:
-            l = reserve_lbl(3);
-            emitboolop(n, l, "bool.true", l+1, "bool.false");
-            putq(LABEL "bool.true.%d\n", l);
-            putq(INDENT "jmp " LABEL "bool.end.%d\n", l+2);
-            putq(LABEL "bool.false.%d\n", l+1);
-            putq(INDENT "jmp " LABEL "bool.end.%d\n", l+2);
-            putq(LABEL "bool.end.%d\n", l+2);
-            putq(INDENT);
-            sr.btyp = B_I32;
-            emitsymb(sr);
-            putq(" =w phi " LABEL "bool.true.%d 1, " LABEL "bool.false.%d 0\n", l, l+1);
-            break;
-
-        case IDENT:
-            s0 = lval(n);
-            sr.btyp = s0.btyp;
-            emitload(sr, s0);
-            break;
-
-        case LIT_DEC:
-            sr.t = Con;
-            sr.u.d = n->s.u.d;
-            sr.btyp = B_F64;
-            break;
-
-        case LIT_INT:
-            sr.t = Con;
-            sr.u.n = n->s.u.n;
-//            int a = (int)n->s.btyp;
-//            int b = (int)sr.btyp;
-            sr.btyp = n->s.btyp;
-            sr.btyp = B_I64;
-//            int c = (int)sr.btyp;
-            break;
-
-        case LIT_CHAR:
-            sr.t = Con;
-            sr.u.n = n->s.u.n;
-            sr.btyp = B_CHAR_DEFAULT;
-            break;
-
-        case LIT_STR:
-            sr.t = Glo;
-            sr.u.n = n->s.u.n;
-            sr.btyp = IDIR(B_U8);
-            break;
-
-        case OP_CALL:
-            emitcall(n, &sr);
-            break;
-
-        case OP_DEREF:
-            s0 = emitexpr(n->l);
-            if (KIND(s0.btyp) != B_PTR)
-                die("dereference of a non-pointer");
-            sr.btyp = DREF(s0.btyp);
-            emitload(sr, s0);
-            break;
-
-        case OP_ADDR:
-            sr = lval(n->l);
-            sr.btyp = IDIR(sr.btyp);
-            break;
-
-        case OP_NEG:
-            if (!z) {
-                z = node(LIT_INT, 0, 0, 0);
-                z->s.t = Con;
-                z->s.u.n = 0;
-            }
-            z->s.btyp = B_I8;       // can always be promoted (which will change the btyp)
-            n->r = n->l;
-            n->l = z;
-            n->tok = OP_SUB;
-            sr = emitexpr(n);
-            break;
-
-        case OP_BINV:
-            nyi("OP_BINV");
-
-        case OP_NOT:
-            nyi("OP_NOT");
-
-        case OP_ASSIGN:
-            // y = x  => store x, y  => store s0, s1
-            s0 = emitexpr(n->r);
-            if (s0.btyp == B_ILLEGAL) {
-                s0 = emitexpr(n->r);
-                die("s0.btyp == B_ILLEGAL");
-            }
-            s1 = lval(n->l);        // always a pointer,
-            sr = s0;
-            if (s1.btyp == B_I16 && s0.btyp == B_I8)  i8_to_i16(&s0);
-            if (s1.btyp == B_I32 && s0.btyp == B_I8)  i8_to_i32(&s0);
-            if (s1.btyp == B_I64 && s0.btyp == B_I8)  i8_to_i64(&s0);
-            if (s1.btyp == B_I32 && s0.btyp == B_I16) i16_to_i32(&s0);
-            if (s1.btyp == B_I64 && s0.btyp == B_I16) i16_to_i64(&s0);
-            if (s1.btyp == B_I64 && s0.btyp == B_I32) i32_to_i64(&s0);
-
-            if (s1.btyp == B_I32 && s0.btyp == B_I64 && n->r->tok == LIT_INT) s0.btyp = B_I32;   // HACK - need to figure how to cast LIT_INT properly
-            if (s1.btyp == B_I32 && s0.btyp == B_I64 && n->r->tok == OP_SUB) s0.btyp = B_I32;   // HACK - need to figure how to cast LIT_INT properly
-
-            if (s1.btyp == B_F64 && s0.btyp == B_I8) i8_to_f64(&s0);
-            if (s1.btyp == B_F64 && s0.btyp == B_I16) i16_to_f64(&s0);
-            if (s1.btyp == B_F64 && s0.btyp == B_I32) i32_to_f64(&s0);
-            if (s1.btyp == B_F64 && s0.btyp == B_I64) i64_to_f64(&s0);
-
-            if (s0.btyp == B_ILLEGAL)
-                die("s0.btyp == B_ILLEGAL");
-            if (s0.btyp != IDIR(B_VOID) || KIND(s1.btyp) != B_PTR)
-                if (s1.btyp != IDIR(B_VOID) || KIND(s0.btyp) != B_PTR)
-                    if (s1.btyp != s0.btyp) {
-                        if (s0.btyp == B_ILLEGAL)
-                            die("s0.btyp == B_ILLEGAL");
-                        else {
-                            s0 = emitexpr(n->r);
-                            die("invalid assignment");
-                        }
-                    }
-            putq(INDENT "store%c ", storetyp(s1.btyp));
-            goto emit_s0_s1;
-
-        case OP_INC:
-        case OP_DEC:
-            o = n->tok == OP_INC ? OP_ADD : OP_SUB;    // e.g. x += 1  => x = x + 1
-            st = lval(n->l);
-            s0.t = Tmp;
-            s0.u.n = reserve_tmp();
-            s0.btyp = st.btyp;
-            emitload(s0, st);
-            s1.t = Con;
-            s1.u.n = 1;
-            s1.btyp = st.btyp;
-            goto binop;
-
-        default:
-            // handle the binary ops
-            if ((OP_BIN_START <= n->tok) && (n->tok <= OP_BIN_END)) {
-                s0 = emitexpr(n->l);
-                s1 = emitexpr(n->r);
-                o = n->tok;
-            }
-            else
-                die("%s is not an expression", toktopp[n->tok]);
-
-        binop:
-            // t = op s0 s1
-            sr.btyp = prom(o, &s0, &s1);
-            if (strchr(neltl, n->tok)) {
-                sprintf(ty, "%c", vtyp(sr.btyp));
-                sr.btyp = B_I32;            // OPEN: should be a B_BOOL
-            } else
-                strcpy(ty, "");
-            putq(INDENT);
-            emitsymb(sr);
-            putq(" =%c", vtyp(sr.btyp));
-            putq(" %s%s ", otoa[o], ty);
-        emit_s0_s1:
-            emitsymb(s0);
-            putq(", ");
-            emitsymb(s1);
-            putq("\n");
-            break;
-    }
-    if (n->tok == OP_SUB  &&  KIND(s0.btyp) == B_PTR  &&  KIND(s1.btyp) == B_PTR) {
-        putq(INDENT TEMP "%d =l div ", tmp_seed);
-        emitsymb(sr);
-        putq(", %d\n", SIZE(DREF(s0.btyp)));
-        sr.u.n = reserve_tmp();
-    }
-    if (n->tok == OP_INC  ||  n->tok == OP_DEC) {
-        putq(INDENT "store%c ", storetyp(st.btyp));
-        emitsymb(sr);
-        putq(", ");
-        emitsymb(st);
-        putq("\n");
-        sr = s0;
-    }
-    return sr;
-}
-
-
-
 // ---------------------------------------------------------------------------------------------------------------------
 // PARSE TREE HELPERS
 // ---------------------------------------------------------------------------------------------------------------------
+
+enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
+    // OPEN: convert tokens to the correct hardcoded btyp enum
+    enum tok op;  Node *n, *ts;  enum btyp baseType = B_NAT;  int hasSigned = 0;  int hasUnsigned = 0;  int hasConst = 0;
+    n = ds->l;
+    while (n) {
+        op = (enum tok) n->s.btyp;
+        switch (n->tok) {
+
+            case pt_storage_class_specifier:
+                nyi("pt_function_specifier");
+                break;
+
+            case pt_type_specifier:
+                ts = n;
+                switch (op) {
+                    default:
+                        die("op == %s @ %d", toktopp[op], __LINE__);
+                        // OPEN handle long int and long long, and signed and unsigned
+                    case T_VOID:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_VOID]);
+                        baseType = B_VOID;
+                        break;
+                    case T_CHAR:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_CHAR_DEFAULT]);
+                        baseType = B_CHAR_DEFAULT;
+                        break;
+                    case T_SHORT:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I16]);
+                        baseType = B_I16;
+                        break;
+                    case T_INT:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I32]);
+                        baseType = B_I32;
+                        break;
+                    case T_LONG:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I64]);
+                        baseType = B_I64;
+                        break;
+                    case T_FLOAT:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F32]);
+                        baseType = B_F32;
+                        break;
+                    case T_DOUBLE:
+                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F64]);
+                        baseType = B_F64;
+                        break;
+                    case T_UNSIGNED:
+                        if (hasUnsigned) die("unsigned already encountered before unsigned");
+                        if (hasSigned) die("signed already encountered before unsigned");
+                        hasUnsigned = 1;
+                        break;
+                    case T_SIGNED:
+                        if (hasUnsigned) die("unsigned already encountered before signed");
+                        if (hasSigned) die("signed already encountered before signed");
+                        hasSigned = 1;
+                        break;
+                }
+                break;
+
+            case pt_type_qualifier:
+                switch (op) {
+                    default:
+                        die("op == %s @ %d", toktopp[op], __LINE__);
+                    case T_CONST:
+                        if (hasConst) die("const already encountered");
+                        hasConst = 1;
+                        break;
+                }
+                break;
+
+            case pt_function_specifier:
+                nyi("pt_function_specifier");
+                break;
+
+            default:
+                die("here");
+
+        }
+        n = n->r;
+    }
+    if (hasSigned) {
+        switch (baseType) {
+            case B_CHAR_DEFAULT:
+                return baseType = B_I8;
+                break;
+            case B_I16:
+                baseType = B_I16;
+                break;
+            case B_NAT:
+            case B_I32:
+                baseType = B_I32;
+                break;
+            case B_I64:
+                baseType = B_I64;
+                break;
+            default:
+                die("illegal type - signed %s @ &d", toktopp[op], __LINE__);
+        }
+    }
+    if (hasUnsigned) {
+        switch (baseType) {
+            case B_CHAR_DEFAULT:
+                return baseType = B_U8;
+                break;
+            case B_I16:
+                baseType = B_U16;
+                break;
+            case B_NAT:
+            case B_U32:
+                baseType = B_U32;
+                break;
+            case B_U64:
+                baseType = B_U64;
+                break;
+            default:
+                die("illegal type - signed %s @ &d", toktopp[op], __LINE__);
+        }
+    }
+    if (hasConst) nyi("const");
+    return baseType;
+}
+
+
+unsigned int pointerise(enum btyp btyp, Node *ptr, int isarray) {
+    // OPEN check for const, volatile, restrict
+    while (ptr) {
+        assertTok(ptr, "ptr", pt_pointer, __LINE__);
+        if (ptr->l->tok == T_PTR) {
+            btyp <<= 8;
+            btyp |= B_PTR;
+        }
+        ptr = ptr->r;
+    }
+    if (isarray) {
+        btyp <<= 8;
+        btyp |= B_PTR;
+    }
+    return btyp;
+}
+
 
 NameType * ptparametertypelistToParameters(Node * ptl) {
     NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id;  int is_array = 0;  enum btyp t;
@@ -709,9 +494,7 @@ void parseFunctionPt(Node *ds, Node *d, Node* cs) {
 
 
 Node * parseInitDeclPt(Node *id, enum btyp btyp) {
-    Node *d, *decl, *ptl, *pd, *fd;
-    char *name;
-    enum btyp t;
+    Node *d, *decl, *ptl, *pd, *fd;  char *name;  enum btyp t;
     assertTok(id, "id", pt_init_declarator, __LINE__);
     assertExists(d = id->l, "d", __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
@@ -1464,7 +1247,7 @@ int yylex() {
                         else if (c == '#') die("unexpected # encountered");
                     } while (c2 == ' ');
                     if (eos == 1) {
-                        p[i] = c;
+                        p[i] = 0;
                         ungetc(c2, inf);
                         break;
                     }
@@ -1529,6 +1312,16 @@ int yylex() {
     return c;
 }
 
+// OPEN: refactor this so globals and ir emission are not complected
+void emitglobals() {
+    putq("\n# GLOBAL VARIABLES\n");
+    for (int oglo = 0; oglo < next_oglo; oglo++)
+        if (globals[oglo].t == Glo) putq("data " GLOBAL "%d = { %c 0 }\n", oglo, vtyp(globals[oglo].btyp));
+    putq("\n# STRING CONSTANTS\n");
+    for (int oglo = 0; oglo < next_oglo; oglo++)
+        if ((globals[oglo].t == Con) && (globals[oglo].btyp == B_CHARS))
+            putq("data " GLOBAL "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
+}
 
 int main(int argc, char*argv[]) {
     if (argc == 2) {
