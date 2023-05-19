@@ -1,19 +1,20 @@
 # minc
 A minimal C compiler with a QBE backend (based on minic)
 
-Starting with minic I moved much of the c code in from the yacc section into the C section, handled line 
-comments, defined some constants for ops, and generally tidied up a bit.
+- uses c99 grammar from https://www.quut.com/c/ANSI-C-grammar-y-1999.html
+- added line numbers and comments to miniyacc - https://c9x.me/yacc/
+- added extern linkage keyword to QBE and macos aarch64 abi features to link to GOT
+- added buckets memory management
+- adding bone type system - initial for the front end, maybe later as an extension to C
 
-Next I took the yacc grammar from https://www.quut.com/c/ANSI-C-grammar-y-1999.html (C99), adding the lexer 
-and helper fucntions from above. Overall the intention here is to implement enough C to handle my needs - 
-principally to develop my understanding of how to generate QBE IR. I can then use minc99 generated IR in bones, 
-e.g. for common libraries, or as a sanity check the bones IR emmision. Another possibility may be to make a 
-minc99 dynamic library to use in Python as part of a JIT. However that would need propper memory management 
-and other stuff.
+goals:
+- learn QBE IR to use in bones
+- learn C-ABI (including C++ exception handling)
+- learn GAS
+- develop components for bones type system, bones vm and a Python in memory compiler (the most basic form of JIT)
 
-
+references: \
 https://c9x.me/compile/ \
-https://c9x.me/yacc/ \
 https://c9x.me/articles/gthreads/intro.html \
 https://github.com/DoctorWkt/acwj \
 https://docs.python.org/3/library/ctypes.html \
