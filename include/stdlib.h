@@ -1,5 +1,5 @@
-int atoi(const char*);
-void *calloc(unsigned long nitems, unsigned long size);
-void *malloc(long size);
-int abs(int x);
-void exit(int status);
+extern int atoi(const char*);
+extern void *calloc(unsigned long nitems, unsigned long size);
+extern void *malloc(long size);
+extern int abs(int x);
+extern void exit(int status);

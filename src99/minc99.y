@@ -52,6 +52,43 @@ void yyerror(char const *);
 // NODE CONSTRUCTION
 // ---------------------------------------------------------------------------------------------------------------------
 
+Node * node(int tok, Node *l, Node *r, int lineno) {
+    Node *n = allocInBuckets(&nodes, sizeof *n, alignof (n));
+    n->tok = tok;
+    n->l = l;
+    n->r = r;
+    n->lineno = lineno;
+    return n;
+}
+
+Node * bindl(Node *n, Node *l, int lineno) {
+    if (!n) return l;
+    if (n->l != 0) {
+        PP(parse, "bindl from @%d", lineno);
+        die("node.l already bound");
+    }
+    n->l = l;
+    return n;
+}
+
+Node * bindr(Node *n, Node *r, int lineno) {
+    if (!n) return r;
+    if (n->r != 0) {
+        PP(parse, "bindr from @%d", lineno);
+        die("2nd arg of fn already bound");
+    }
+    n->r = r;
+    return n;
+}
+
+Node * bindlr(Node *n, Node *l, Node *r, int lineno) {
+    if (n->l != 0) {PP(parse, "bindlr from @%d", lineno); die("n.l already bound");}
+    if (n->r != 0) {PP(parse, "bindlr from @%d", lineno); die("n.r already bound");}
+    n->l = l;
+    n->r = r;
+    return n;
+}
+
 Node *nodepp(int tok, Node *l, Node *r, int lineno, int level, char *msg, ...) {
     if (level & g_logging_level) {
         va_list args;
@@ -259,7 +296,7 @@ enum btyp prom(enum tok tok, Symb *l, Symb *r) {
 Scale:
     // OPEN: handle double
     sz = SIZE(DREF(l->btyp));
-    if (r->t == Con)
+    if (r->styp == Con)
         r->u.n *= sz;
     else {
         switch (r->btyp) {
@@ -297,50 +334,70 @@ Scale:
 // PARSE TREE HELPERS
 // ---------------------------------------------------------------------------------------------------------------------
 
+int ptdeclarationspecifiersForExtern(Node *ds) {
+    Node *n;
+    n = ds->l;
+    if (n && (n->tok == pt_storage_class_specifier) && (n->s.btyp == T_EXTERN)) return 1;
+    return 0;
+}
+
 enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
     // OPEN: convert tokens to the correct hardcoded btyp enum
-    enum tok op;  Node *n, *ts;  enum btyp baseType = B_NAT;  int hasSigned = 0;  int hasUnsigned = 0;  int hasConst = 0;
+    enum tok op;  Node *n, *ts;  enum btyp baseType = 0;  int hasSigned = 0, hasUnsigned = 0, hasConst = 0;
     n = ds->l;
     while (n) {
         op = (enum tok) n->s.btyp;
         switch (n->tok) {
 
             case pt_storage_class_specifier:
-                nyi("pt_function_specifier");
+                switch (n->s.btyp) {
+                    case T_TYPEDEF:
+                        die("pt_storage_class_specifier, T_TYPEDEF should not be possible");
+                    case T_EXTERN:
+                        // ds( scs(), ds(ts() )
+                        n = ds->r->l; // extern handled else where
+                        break;
+                    case T_STATIC:
+                        nyi("pt_storage_class_specifier, T_STATIC");
+                    case T_AUTO:
+                        nyi("pt_storage_class_specifier, T_AUTO");
+                    case T_REGISTER:
+                        nyi("pt_storage_class_specifier, T_REGISTER");
+                }
                 break;
 
             case pt_type_specifier:
                 ts = n;
                 switch (op) {
                     default:
-                        die("op == %s @ %d", toktopp[op], __LINE__);
+                        nyi("op == %s @ %d", toktopp[op], __LINE__);
                         // OPEN handle long int and long long, and signed and unsigned
                     case T_VOID:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_VOID]);
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_VOID]);
                         baseType = B_VOID;
                         break;
                     case T_CHAR:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_CHAR_DEFAULT]);
-                        baseType = B_CHAR_DEFAULT;
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_CHAR]);
+                        baseType = B_CHAR;
                         break;
                     case T_SHORT:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I16]);
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I16]);
                         baseType = B_I16;
                         break;
                     case T_INT:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I32]);
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I32]);
                         baseType = B_I32;
                         break;
                     case T_LONG:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I64]);
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_I64]);
                         baseType = B_I64;
                         break;
                     case T_FLOAT:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F32]);
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F32]);
                         baseType = B_F32;
                         break;
                     case T_DOUBLE:
-                        if (baseType != B_NAT) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F64]);
+                        if (baseType != 0) die("2 base types encountered %s and then %s", btyptopp[baseType], btyptopp[B_F64]);
                         baseType = B_F64;
                         break;
                     case T_UNSIGNED:
@@ -354,20 +411,23 @@ enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
                         hasSigned = 1;
                         break;
                 }
+                n = n->r;
                 break;
 
             case pt_type_qualifier:
                 switch (op) {
-                    default:
-                        die("op == %s @ %d", toktopp[op], __LINE__);
+                    default:  // T_RESTRICT, T_VOLATILE
+                        nyi("op == %s @ %d", toktopp[op], __LINE__);
                     case T_CONST:
                         if (hasConst) die("const already encountered");
                         hasConst = 1;
+                        n = n->r;
                         break;
                 }
                 break;
 
             case pt_function_specifier:
+                if (op != T_INLINE) die("op != T_INLINE");
                 nyi("pt_function_specifier");
                 break;
 
@@ -375,17 +435,16 @@ enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
                 die("here");
 
         }
-        n = n->r;
     }
     if (hasSigned) {
         switch (baseType) {
-            case B_CHAR_DEFAULT:
+            case B_CHAR:
                 return baseType = B_I8;
                 break;
             case B_I16:
                 baseType = B_I16;
                 break;
-            case B_NAT:
+            case 0:
             case B_I32:
                 baseType = B_I32;
                 break;
@@ -398,13 +457,13 @@ enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
     }
     if (hasUnsigned) {
         switch (baseType) {
-            case B_CHAR_DEFAULT:
+            case B_CHAR:
                 return baseType = B_U8;
                 break;
             case B_I16:
                 baseType = B_U16;
                 break;
-            case B_NAT:
+            case 0:
             case B_U32:
                 baseType = B_U32;
                 break;
@@ -466,6 +525,7 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
         assertExists((ds=pd->l), "pd->l", __LINE__);
         assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
         t = ptdeclarationspecifiersToBTypeId(ds);
+        if (ptdeclarationspecifiersForExtern(ds)) die("illegal extern in parameter list");
         t = pointerise(t, d->l, is_array);
     }
     return start;
@@ -473,11 +533,12 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
 
 
 void parseFunctionPt(Node *ds, Node *d, Node* cs) {
-    NameType *params = 0;  unsigned int t;  char *fnname;
+    NameType *params = 0;  enum btyp t;  char *fnname;
     PP(emit, "parseFunctionPt");
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
     t = ptdeclarationspecifiersToBTypeId(ds);
+    if (ptdeclarationspecifiersForExtern(ds)) die("illegal extern in function definition");
     t = pointerise(t, d->l, 0);
     assertTok(d->r, "d->r", func_def, __LINE__);
     assertExists(d->r->l, "d->r->l", __LINE__);
@@ -493,7 +554,7 @@ void parseFunctionPt(Node *ds, Node *d, Node* cs) {
 }
 
 
-Node * parseInitDeclPt(Node *id, enum btyp btyp) {
+Node * parseInitDeclPt(Node *id, enum btyp btyp, int isExtern) {
     Node *d, *decl, *ptl, *pd, *fd;  char *name;  enum btyp t;
     assertTok(id, "id", pt_init_declarator, __LINE__);
     assertExists(d = id->l, "d", __LINE__);
@@ -507,8 +568,10 @@ Node * parseInitDeclPt(Node *id, enum btyp btyp) {
             name = d->r->s.u.v;
             t = pointerise(btyp, d->l, 0);      // OPEN: handle array
             if (t == B_VOID) die("invalid void declaration for %s", name);
+            if (isExtern)
+                t = BTIntersect(t, B_EXTERN);
             decl = node(DeclVar, d->r, id->r, __LINE__);
-            decl->s.t = Var;                    // if it turns out the declaration is global this can be changed to Glo later
+            decl->s.styp = Var;                    // if it turns out the declaration is global this can be changed to Glo later
             decl->s.btyp = t;
             decl->s.u.v = name;
             symadd(name, 0, t);
@@ -529,11 +592,14 @@ Node * parseInitDeclPt(Node *id, enum btyp btyp) {
             }
             PP(parse, "parseInitDeclPt encountered %s (ellipsis @ %d) @ %d", toktopp[d->r->tok], i, d->lineno);
             t = pointerise(btyp, d->l, 0);      // OPEN: handle array, e.g. char *[] fred();
+            t = FUNC(t);
+            if (isExtern)
+                t = BTIntersect(t, B_EXTERN);
             // add global var to sym table
-            globals[next_oglo].t = Var;
+            globals[next_oglo].styp = Var;
             globals[next_oglo].btyp = t;
             globals[next_oglo].u.v = name;
-            symadd(name, reserve_oglo(), FUNC(t));
+            symadd(name, reserve_oglo(), t);
             return 0;
     }
     return 0;
@@ -546,7 +612,7 @@ void addDeclsToGlobals(Node *decls) {
     assertTok(decls, "decls", DeclVars, __LINE__);
     for (; decls; decls=decls->r) {
         decl = decls->l;
-        globals[next_oglo].t = Glo;
+        globals[next_oglo].styp = Glo;
         globals[next_oglo].btyp = decl->s.btyp;
         globals[next_oglo].u.v = decl->s.u.v;
         symset(decl->s.u.v, reserve_oglo(), decl->s.btyp);
@@ -555,14 +621,15 @@ void addDeclsToGlobals(Node *decls) {
 
 
 Node * mkdecls(Node *ds, Node *idl, int lineno) {
-    enum btyp t;  Node *start=0, *next, *current, *id, *decl;
+    enum btyp t;  Node *start=0, *next, *current, *id, *decl;  int isExtern = 0;
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
     t = ptdeclarationspecifiersToBTypeId(ds);
+    isExtern = ptdeclarationspecifiersForExtern(ds);
     assertTok(idl, "idl", pt_init_declarator_list, __LINE__);
     for (; idl; idl=idl->r) {
         assertTok(idl, "idl", pt_init_declarator_list, __LINE__);
         assertExists(id=idl->l, "id", __LINE__);
-        if (decl=parseInitDeclPt(id, t)) {
+        if (decl=parseInitDeclPt(id, t, isExtern)) {
             next = node(DeclVars, decl, 0, lineno);
             if (!start) current = start = next;
             else {
@@ -767,8 +834,8 @@ declaration
 // reverse of init_declarator_list
 declaration_specifiers
 : storage_class_specifier                               { PP(pt, "storage_class_specifier   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, 0, $%); }
-| storage_class_specifier declaration_specifiers        { PP(pt, "type_specifier declaration_specifiers   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, $2, $%); }
-| type_specifier                                        { PP(pt, "type_specifier   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, 0, $%); }
+| storage_class_specifier declaration_specifiers        { PP(pt, "storage_class_specifier declaration_specifiers   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, $2, $%); }
+| type_specifier                                        { PP(pt, "%s - type_specifier   =>   declaration_specifiers", toktopp[$1->tok]); $$ = node(pt_declaration_specifiers, $1, 0, $%); }
 | type_specifier declaration_specifiers                 { PP(pt, "type_specifier declaration_specifiers   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, $2, $%); }
 | type_qualifier                                        { PP(pt, "type_qualifier   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, 0, $%); }
 | type_qualifier declaration_specifiers                 { PP(pt, "type_qualifier declaration_specifiers   =>   declaration_specifiers"); $$ = node(pt_declaration_specifiers, $1, $2, $%); }
@@ -788,11 +855,11 @@ init_declarator
 ;
 
 storage_class_specifier
-: TYPEDEF                                               { PP(pt, "TYPEDEF"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_TYPEDEF, $%); }
-| EXTERN                                                { PP(pt, "EXTERN"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_EXTERN, $%); }
-| STATIC                                                { PP(pt, "STATIC"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_STATIC, $%); }
-| AUTO                                                  { PP(pt, "AUTO"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_AUTO, $%); }
-| REGISTER                                              { PP(pt, "REGISTER"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_REGISTER, $%); }
+: TYPEDEF                                               { PP(pt, "TYPEDEF  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_TYPEDEF, $%); }
+| EXTERN                                                { PP(pt, "EXTERN  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_EXTERN, $%); }
+| STATIC                                                { PP(pt, "STATIC  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_STATIC, $%); }
+| AUTO                                                  { PP(pt, "AUTO  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_AUTO, $%); }
+| REGISTER                                              { PP(pt, "REGISTER  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_REGISTER, $%); }
 ;
 
 type_specifier
@@ -1074,7 +1141,7 @@ declaration_list
 
 struct {
     char *s;
-    int t;
+    int yacct;
 } kwds[] = {
     { "void", VOID },           { "char", CHAR },           { "short", SHORT },         { "int", INT },
     { "long", LONG },           { "float", FLOAT },         { "double", DOUBLE },       { "signed", SIGNED },
@@ -1164,7 +1231,7 @@ int yylex() {
         ungetc(c, inf);
         for (i=0; kwds[i].s; i++)
             if (strcmp(v, kwds[i].s) == 0)
-                return kwds[i].t;
+                return kwds[i].yacct;
         yylval.n = node(IDENT, 0, 0, __LINE__);
         void *buf = allocInBuckets(&all_strings, n, 1);
         yylval.n->s.u.v = buf;
@@ -1212,7 +1279,7 @@ int yylex() {
         }
         yylval.n = node(LIT_CHAR, 0, 0, __LINE__);
         yylval.n->s.u.n = n;
-        yylval.n->s.btyp = B_CHAR_DEFAULT;
+        yylval.n->s.btyp = B_CHAR;
         c = getc(inf);
         if (c != '\'') nyi("only single char literal supported");
         return CONSTANT;
@@ -1259,12 +1326,12 @@ int yylex() {
         // OPEN: reallocate p to the correct size
         // OPEN: reuse strings?
         if (next_oglo == NGlo) die("too many globals");
-        globals[next_oglo].t = Con;
-        globals[next_oglo].btyp = B_CHARS;
+        globals[next_oglo].styp = Con;
+        globals[next_oglo].btyp = B_CHAR_STAR;
         globals[next_oglo].u.v = p;
         yylval.n = node(LIT_STR, 0, 0, __LINE__);
         yylval.n->s.u.n = next_oglo;
-        yylval.n->s.btyp = B_CHARS;
+        yylval.n->s.btyp = B_CHAR_STAR;
         reserve_oglo();
         PP(lex, "\"%s\" ", p);
         return STRING_LITERAL;
@@ -1314,12 +1381,16 @@ int yylex() {
 
 // OPEN: refactor this so globals and ir emission are not complected
 void emitglobals() {
+    enum btyp btyp;  int isExtern;
     putq("\n# GLOBAL VARIABLES\n");
-    for (int oglo = 0; oglo < next_oglo; oglo++)
-        if (globals[oglo].t == Glo) putq("data " GLOBAL "%d = { %c 0 }\n", oglo, vtyp(globals[oglo].btyp));
+    for (int oglo = 0; oglo < next_oglo; oglo++) {
+        btyp = globals[oglo].btyp;
+        isExtern = fitsWithin(btyp, B_EXTERN);
+        if (globals[oglo].styp == Glo && !isExtern) putq("data " GLOBAL "%d = { %c 0 }\n", oglo, vtyp(btyp));
+    }
     putq("\n# STRING CONSTANTS\n");
     for (int oglo = 0; oglo < next_oglo; oglo++)
-        if ((globals[oglo].t == Con) && (globals[oglo].btyp == B_CHARS))
+        if ((globals[oglo].styp == Con) && (globals[oglo].btyp == B_CHAR_STAR))
             putq("data " GLOBAL "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
 }
 

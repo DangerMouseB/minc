@@ -29,3 +29,5 @@ play/qbe/queen.q
 play/tmp
 play/tmp.q
 binary_play
+
+play/hello

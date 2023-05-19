@@ -42,7 +42,7 @@ struct BType {
     DESC_ID descId;                 // 4
 };
 
-struct BTInter {
+struct BTIntersection {
     BTYPE_ID *types;                // 8
 };
 

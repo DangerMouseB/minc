@@ -6,7 +6,6 @@ int **b;
 
 int board() {
 	int x, y;
-
 	for (y=0; y<8; y++) {
 		for (x=0; x<8; x++)
 			printf(" %02d", b[x][y]);
@@ -15,6 +14,7 @@ int board() {
 	printf("\n");
 	return 0;
 }
+
 
 int chk(int x, int y) {
 	if (x < 0 || x > 7 || y < 0 || y > 7)

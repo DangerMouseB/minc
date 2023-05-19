@@ -9,14 +9,6 @@
 #include "aj.h"
 
 
-// code gen constants - PVAR is the point to the memory that backs a C variable
-#define GLOBAL  "$g"
-#define TEMP    "%%."
-#define PVAR    "%%_"
-#define LABEL   "@"
-#define INDENT "\t"
-
-
 // compiler constants (enum so get in debugger)
 enum {
     NGlo = 256,
@@ -29,53 +21,63 @@ enum {
 
 
 // ---------------------------------------------------------------------------------------------------------------------
+// FORWARD DECLARATIONS
+// ---------------------------------------------------------------------------------------------------------------------
+
+void PP(int level, char *msg, ...);
+void die(char *msg, ...);
+
+
+
+// ---------------------------------------------------------------------------------------------------------------------
 // btyp enum
-// this just here to allow CLion to make life easier when debugging - eventually will replace with B_TYPE_ID
+// here just to allow CLion to make life easier when debugging - eventually will replace with BTYPE_ID
+// encoding up to 3 pointers + a btyp can be capture in 4 bytes, bit 7 of btyp indicates extern
+// pointer to a fn:     tRet, B_FN, B_PTR
+// pointer:             BASE_TYPE, B_PTR
 // ---------------------------------------------------------------------------------------------------------------------
 
 #define _hc1 0
 #define _hc2 20
 
 enum btyp {
-    B_NAT = 0,          // to catch bugs
-    B_U8  = _hc1+1,         // char, unsigned char
+    B_CHAR = _hc1+5,// B_I8 - implementation defined (poss with compiler flags)
+    B_U8  = _hc1+1,         // unsigned char
     B_U16 = _hc1+2,         // unsigned short
-    B_U32 = _hc1+3,         // signed int
+    B_U32 = _hc1+3,         // unsigned int, unsigned
     B_U64 = _hc1+4,         // unsigned long, unsigned long int
-    B_I8  = _hc1+5,         // signed char
+    B_I8  = _hc1+5,         // char, signed char
     B_I16 = _hc1+6,         // short, signed short
-    B_I32 = _hc1+7,         // int, signed int
+    B_I32 = _hc1+7,         // int, signed int, signed
     B_I64 = _hc1+8,         // long, long int, signed long, signed long int
 
     B_F32 = _hc1+9,         // float
     B_F64 = _hc1+10,        // double
 
-    B_CHARS = _hc1 + 11,    // null terminated uft-8 array, char*
-    B_N_CHARS = _hc1 + 12,  // N**chars, char*argv[], char**
-    B_TXT = _hc1+13,        // txt (length prefixed, null terminated uft-8 array)
-    B_NN_I32 = _hc1+14,     // int **, signed int **
-    B_N_I32 = _hc1+15,      // int *, signed int *
-    B_VOID_STAR = _hc1+16,
+//    B_N_CHAR_STAR = _hc1+12,  // N**chars, char*argv[], char**
+//    B_TXT = _hc1+13,        // txt (length prefixed, null terminated uft-8 array)
+//    B_NN_I32 = _hc1+14,     // int **, signed int **
+//    B_N_I32 = _hc1+15,      // int *, signed int *
 
     B_VOID = _hc2+1,
     B_VARARGS = _hc2+2,
     B_U8_S = _hc2+3,
     B_N_MEM = _hc2+4,       // N**MEM, implemented as void **
-    B_PTR = 254,            // HACK
-    B_FN = 255,             // HACK
+    B_PTR = _hc2+5,
+    B_FN = _hc2+6,
+    B_VOID_STAR = (B_VOID << 8) | B_PTR,
+    B_CHAR_STAR = (B_CHAR << 8) | B_PTR,
+
+    B_EXTERN = 128,
 };
 
 static char *btyptopp[] = {
-        [B_NAT] = "B_NAT",
         [B_U8] = "B_U8",                [B_U16] = "B_U16",              [B_U32] = "B_U32",              [B_U64] = "B_U64",
         [B_I8] = "B_I8",                [B_I16] = "B_I16",              [B_I32] = "B_I32",              [B_I64] = "B_I64",
-        [B_F32] = "B_F32",              [B_F64] = "B_F64",              [B_CHARS] = "B_CHARS",          [B_N_CHARS] = "B_N_CHARS",
-        [B_TXT] = "B_TXT",              [B_NN_I32] = "B_NN_I32",        [B_N_I32] = "B_N_I32",          [B_VOID_STAR] = "B_VOID_STAR",
+        [B_F32] = "B_F32",              [B_F64] = "B_F64",
+        [B_VOID_STAR] = "B_VOID_STAR",  [B_CHAR_STAR] = "B_CHAR_STAR",
         [B_VOID] = "B_VOID",            [B_VARARGS] = "B_VARARGS",      [B_U8_S] = "B_U8_S",            [B_N_MEM] = "B_N_MEM",
 };
-
-// implementation defined (poss with compiler flags)
-#define B_CHAR_DEFAULT B_I8
 
 #define IDIR(t) (((t) << 8) + B_PTR)
 #define FUNC(t) (((t) << 8) + B_FN)
@@ -88,12 +90,51 @@ static char *btyptopp[] = {
 )))
 
 
-// ---------------------------------------------------------------------------------------------------------------------
-// FORWARD DECLARATIONS
-// ---------------------------------------------------------------------------------------------------------------------
+// coding standards - always use signed ints so differences can be taken, unsigned are only ever needed for debugging
 
-void PP(int level, char *msg, ...);
-void die(char *msg, ...);
+
+int fitsWithin(enum btyp a, enum btyp b) {
+    // should answer a tuple {cacheID, doesFit, tByT, distance}
+    // tByT can just be a T sorted list (not worth doing a hash)
+    if (a == b) return 1;
+    if (b & 0xFFFFFF00) die("b must be a simple type");
+    if ((a & 0x000000FF) == b) return 1;
+    if ((b == B_EXTERN) && (a & B_EXTERN)) return 1;
+    return 0;
+}
+
+static enum btyp _tDepointered(enum btyp t) {
+    while ((t & 0x000000FF) == B_PTR) t >>= 8;
+    return t;
+}
+
+enum btyp tRet(enum btyp tFn) {
+    return tFn >> 8;               // functions are stored shifted with type B_FN
+}
+
+void fPPT(FILE *f, enum btyp t) {
+    int separate = 0;  enum btyp tBase;
+    tBase = _tDepointered(t);
+    if (fitsWithin(t, B_EXTERN)) {fputs("extern", f); separate = 1;}
+    if (fitsWithin(tBase, B_FN)) {
+        if (separate) {fputc(' ', f); separate = 0;}
+        fputs("(...) ->", f);
+        tBase >>= 8;
+        separate = 1;
+    }
+    if (separate) {fputc(' ', f); separate = 0;}
+    while ((t & 0x000000FF) == B_PTR) {
+        fputc('*', f);
+        t >>= 8;
+    }
+    fputs(btyptopp[tBase], f);
+}
+
+enum btyp BTIntersect(enum btyp a, enum btyp b) {
+    if ((a & 0x00000080) == 0 && (b == B_EXTERN)) return a | B_EXTERN;
+    nyi("BTIntersect");
+    return 0;
+}
 
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -289,8 +330,9 @@ struct Symb {
         Tmp = 2,            // qbe temporary - hidden from user
         Var = 3,            // local variable, with type btyp
         Glo = 4,            // global variable, with type btyp
-        Fn  = 5,            // function, with type btyp
-    } t;
+        Str = 5,            // global string, with type B_CHAR_STAR
+        Fn  = 6,            // function, with type btyp
+    } styp;
     enum btyp btyp;         // 4 (upto ***<type>)
     union {                 // 8
         int n;              // oglo, or integer constant
@@ -396,7 +438,7 @@ int i_ellipsis[NGlo];           // OPEN: use a B_FN to properly capture the sign
 struct {
     char name[SYM_NAME_MAX];        // 32
     enum btyp btyp;                 // 4
-    int glo;                        // 4 - if it's a global it's offset (0 is reserved to mean local)
+    int glo;                        // 4 - 0 means local else an offset into globals
 }
 _symtable[NVar];                // hash table of all defined variables - i.e. current locals and globals
 Symb _tsym[1];
@@ -458,11 +500,11 @@ Symb * symget(char *name) {
         if (strcmp(_symtable[h].name, name) == 0) {
             _tsym->btyp = _symtable[h].btyp;
             if (_symtable[h].glo) {
-                _tsym->t = Glo;
+                _tsym->styp = Glo;
                 _tsym->u.n = _symtable[h].glo;
             }
             else {
-                _tsym->t = Var;
+                _tsym->styp = Var;
                 strncpy(_symnamebuf, name, SYM_NAME_MAX);
                 _tsym->u.v = _symnamebuf;
             }
@@ -485,43 +527,6 @@ void assertTok(Node *n, char* varname, enum tok tok, int lineno) {
 
 void assertExists(void *p, char* varname, int lineno) {
     if (!p) die("missing %s @ %d", varname, lineno);
-}
-
-Node * node(int tok, Node *l, Node *r, int lineno) {
-    Node *n = allocInBuckets(&nodes, sizeof *n, alignof (n));
-    n->tok = tok;
-    n->l = l;
-    n->r = r;
-    n->lineno = lineno;
-    return n;
-}
-
-Node * bindl(Node *n, Node *l, int lineno) {
-    if (!n) return l;
-    if (n->l != 0) {
-        PP(parse, "bindl from @%d", lineno);
-        die("node.l already bound");
-    }
-    n->l = l;
-    return n;
-}
-
-Node * bindr(Node *n, Node *r, int lineno) {
-    if (!n) return r;
-    if (n->r != 0) {
-        PP(parse, "bindr from @%d", lineno);
-        die("2nd arg of fn already bound");
-    }
-    n->r = r;
-    return n;
-}
-
-Node * bindlr(Node *n, Node *l, Node *r, int lineno) {
-    if (n->l != 0) {PP(parse, "bindlr from @%d", lineno); die("n.l already bound");}
-    if (n->r != 0) {PP(parse, "bindlr from @%d", lineno); die("n.r already bound");}
-    n->l = l;
-    n->r = r;
-    return n;
 }
 
 void die_(char *preamble, char *msg, va_list args) {
