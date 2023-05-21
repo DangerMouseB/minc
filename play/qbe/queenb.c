@@ -1,31 +1,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int Q, nSolutions;
+FILE _;
+
+void PP(char *s) {
+    fprintf(_.s, s);
+}
 
 void print(int **board) {
 	int i, j;
-	for (j=0; j<Q; j++) {
-		for (i=0; i<Q; i++)
+	for (j=0; j<_.Q; j++) {
+		for (i=0; i<_.Q; i++)
 			if (board[i][j])
-				printf(" Q");
+				PP(" Q");
 			else
-				printf(" .");
-		printf("\n");
+				PP(" .");
+		PP("\n");
 	}
-	printf("\n");
+	PP("\n");
 }
 
 int chk(int i, int j, int **board) {
 	int k, r;
-	for (r=k=0; k<Q; k++) {
+	for (r=k=0; k<_.Q; k++) {
 		r = r + board[i][k];
 		r = r + board[k][j];
-		if (i+k < Q & j+k < Q)
+		if (i+k < _.Q & j+k < _.Q)
 			r = r + board[i+k][j+k];
-		if (i+k < Q & j-k >= 0)
+		if (i+k < _.Q & j-k >= 0)
 			r = r + board[i+k][j-k];
-		if (i-k >= 0 & j+k < Q)
+		if (i-k >= 0 & j+k < _.Q)
 			r = r + board[i-k][j+k];
 		if (i-k >= 0 & j-k >= 0)
 			r = r + board[i-k][j-k];
@@ -35,12 +39,12 @@ int chk(int i, int j, int **board) {
 
 void go(int j, int **board) {
 	int i;
-	if (j == Q) {
+	if (j == _.Q) {
 		print(board);
-		nSolutions++;
+		_.nSolutions++;
 		return;
 	}
-	for (i=0; i<Q; i++)
+	for (i=0; i<_.Q; i++)
 		if (chk(i, j, board) == 0) {
 			board[i][j]++;
 			go(j+1, board);
@@ -58,11 +62,14 @@ int **newBoard(int N) {
 
 int main(int ac, char *av[]) {
 	int **board;
-	Q = 8;
+    int _.Q, _.nSolutions;  FILE *_.s;
+	_.Q = 8;
 	if (ac >= 2)
-		Q = atoi(av[1]);
-	board = newBoard(Q);
-    nSolutions = 0;
+		_.Q = atoi(av[1]);
+    _.nSolutions = 0;
+    _.s = stdout;
+
+    board = newBoard(_.Q);
 	go(0, board);
-	printf("found %d solutions\n", nSolutions);
+	fprintf(_.s, "found %d solutions\n", _.nSolutions);
 }

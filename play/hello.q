@@ -12,7 +12,7 @@ export function w $main() {
     %.10 =l loadl $f
     %.12 =w loadw %_i
     %.13 =l loadl $p2
-    %.9 =w call %.13(l %.10, l $s7, w %.12)
+    %.9 =w call %.13(l %.10, l $s7, ..., w %.12)
     ret
 }
 

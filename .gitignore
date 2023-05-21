@@ -16,23 +16,27 @@ y.*
 *.p
 *.s
 
+
+#binaries
+a.out
+queen
 queen2
+queen3
+queen4
 prime
 knight
+hello
 
 test_arena
 
 play/handcrafted
 play/libcrlf.a
-play/qbe/queen
-play/qbe/queen.q
 play/tmp
 play/tmp.q
 binary_play
 
-play/hello
-play/a.out
-
 play/hello_pcc
 
 play/hello_pcc.*
+
+play/qbe/queen5

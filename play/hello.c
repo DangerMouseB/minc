@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 // OPEN: add static keyword
-void * f;
+FILE * f;
 int (*p) (void *, const char *, ...);
 
 int main() {

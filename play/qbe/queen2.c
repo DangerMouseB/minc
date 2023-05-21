@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int Q, nSolutions;
+int Q;
 
 void print(int **board) {
 	int i, j;
@@ -33,19 +33,19 @@ int chk(int i, int j, int **board) {
 	return r;
 }
 
-void go(int j, int **board) {
+int go(int j, int **board, int nSolutions) {
 	int i;
 	if (j == Q) {
 		print(board);
-		nSolutions++;
-		return;
+		return nSolutions + 1;
 	}
 	for (i=0; i<Q; i++)
 		if (chk(i, j, board) == 0) {
 			board[i][j]++;
-			go(j+1, board);
+			nSolutions = go(j+1, board, nSolutions);
 			board[i][j]--;
 		}
+    return nSolutions;
 }
 
 int **newBoard(int N) {
@@ -57,12 +57,11 @@ int **newBoard(int N) {
 }
 
 int main(int ac, char *av[]) {
-	int **board;
+	int **board, nSolutions;
 	Q = 8;
 	if (ac >= 2)
 		Q = atoi(av[1]);
 	board = newBoard(Q);
-    nSolutions = 0;
-	go(0, board);
+    nSolutions = go(0, board, 0);
 	printf("found %d solutions\n", nSolutions);
 }
