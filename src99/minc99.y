@@ -344,7 +344,7 @@ int ptdeclarationspecifiersForExtern(Node *ds) {
 
 enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
     // OPEN: convert tokens to the correct hardcoded btyp enum
-    enum tok op;  Node *n, *ts;  enum btyp baseType = 0;  int hasSigned = 0, hasUnsigned = 0, hasConst = 0;
+    enum tok op;  Node *n;  enum btyp baseType = 0;  int hasSigned = 0, hasUnsigned = 0, hasConst = 0;
     n = ds->l;
     while (n) {
         op = (enum tok) n->s.btyp;
@@ -368,7 +368,6 @@ enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
                 break;
 
             case pt_type_specifier:
-                ts = n;
                 switch (op) {
                     default:
                         nyi("op == %s @ %d", toktopp[op], __LINE__);
@@ -507,40 +506,64 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
         if (prior) prior->next = next;
         assertTok(ptl, "ptl", pt_parameter_type_list, __LINE__);
         assertExists((pd=ptl->l), "ptl->l", __LINE__);
-        assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
-        assertExists((d=pd->r), "pd->r", __LINE__);
-        assertTok(d, "d", pt_declarator, __LINE__);
-        assertExists((id=d->r), "d->r", __LINE__);
-        switch (id->tok) {
-            case IDENT:
+        switch (pd->tok) {
+            case pt_parameter_declaration:
+                assertExists((d=pd->r), "pd->r", __LINE__);
+                assertTok(d, "d", pt_declarator, __LINE__);
+                assertExists((id=d->r), "d->r", __LINE__);
+                switch (id->tok) {
+                    case IDENT:
+                        break;
+                    case pt_array:
+                        is_array = 1;
+                        id = id->l;
+                        break;
+                    default:
+                        nyi("@ %d", __LINE__);
+                }
+                assertTok(id, "id", IDENT, __LINE__);
+                next->name = id->s.u.v;
+                assertExists((ds=pd->l), "pd->l", __LINE__);
+                assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
+                t = ptdeclarationspecifiersToBTypeId(ds);
+                if (ptdeclarationspecifiersForExtern(ds)) die("illegal extern in parameter list");
+                t = pointerise(t, d->l, is_array);
                 break;
-            case pt_array:
-                is_array = 1;
-                id = id->l;
+            case T_ELLIPSIS:
+                nyi("ELLIPSIS @ %d", __LINE__);
                 break;
             default:
-                nyi("@ %d", __LINE__);
+                bug("ptparametertypelistToParameters @ %d", __LINE__);
         }
-        assertTok(id, "id", IDENT, __LINE__);
-        next->name = id->s.u.v;
-        assertExists((ds=pd->l), "pd->l", __LINE__);
-        assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
-        t = ptdeclarationspecifiersToBTypeId(ds);
-        if (ptdeclarationspecifiersForExtern(ds)) die("illegal extern in parameter list");
-        t = pointerise(t, d->l, is_array);
+        assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
+
     }
     return start;
 }
 
+int argNumOfEllipsis(Node *fd) {
+    Node *ptl, *pd;  int i = 1;
+    globals[next_oglo].i = 0;
+    for (ptl = fd->r; ptl; ptl = ptl->r, i++) {
+        assertTok(ptl, "fd->r", pt_parameter_type_list, __LINE__);
+        assertExists(pd = ptl->l, "ptl->l", __LINE__);
+        if (pd->tok == T_ELLIPSIS) {
+            globals[next_oglo].i = i;
+            break;
+        }
+        assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
+    }
+    return i;
+}
 
 void process_function_definition(Node *ds, Node *d, Node* cs) {
-    NameType *params = 0;  enum btyp t;  char *fnname;
+    NameType *params = 0, *p;  enum btyp tRet;  char *fnname;  int oglo;
     PP(emit, "process_function_definition");
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
-    t = ptdeclarationspecifiersToBTypeId(ds);
+    tRet = ptdeclarationspecifiersToBTypeId(ds);
     if (ptdeclarationspecifiersForExtern(ds)) die("illegal extern in function definition");
-    t = pointerise(t, d->l, 0);
+    tRet = pointerise(tRet, d->l, 0);
     assertTok(d->r, "d->r", func_def, __LINE__);
     assertExists(d->r->l, "d->r->l", __LINE__);
     assertTok(d->r->l, "d->r->l", IDENT, __LINE__);
@@ -549,14 +572,23 @@ void process_function_definition(Node *ds, Node *d, Node* cs) {
         params = ptparametertypelistToParameters(d->r->r);
     }
     fnname = d->r->l->s.u.v;
-    emitfunc(t, fnname, params, cs);
+
+    oglo = reserve_oglo();
+    globals[oglo].styp = Fn;
+    globals[oglo].i = argNumOfEllipsis(d->r);;
+    globals[oglo].btyp = FUNC(tRet);
+    globals[oglo].u.v = fnname;
+    symadd(fnname, oglo, FUNC(tRet));
+    for (p=params; p; p = p->next)
+        symadd(p->name, 0, p->btyp);
+
+    emitfunc(tRet, fnname, params, cs);
     symclr();
     tmp_seed = TMP_START;
 }
 
-
 Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
-    Node *d, *decl, *ptl, *pd, *fd, *d2;  char *name;  enum btyp btyp, btypFn;  int isPtrToFn=0;
+    Node *d, *decl, *fd, *d2;  char *name;  enum btyp btyp, btypFn;  int isPtrToFn=0;
     assertTok(id, "id", pt_init_declarator, __LINE__);
     assertExists(d = id->l, "d", __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
@@ -613,21 +645,7 @@ Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
                 globals[next_oglo].styp = Fn;
             globals[next_oglo].btyp = btypFn;
             globals[next_oglo].u.v = name;
-
-            // catch ellipsis
-            int i = 1;
-            globals[next_oglo].i = 0;
-            for (ptl = fd->r; ptl; ptl = ptl->r, i++) {
-                assertTok(ptl, "fd->r", pt_parameter_type_list, __LINE__);
-                assertExists(pd = ptl->l, "ptl->l", __LINE__);
-                if (pd->tok == T_ELLIPSIS) {
-                    globals[next_oglo].i = i;
-                    break;
-                }
-                assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
-            }
-            if (!i) PP(parse, "parseInitDeclPt encountered %s (ellipsis @ %d) @ %d", toktopp[d->r->tok], i, d->lineno);
-
+            globals[next_oglo].i = argNumOfEllipsis(fd);
             symadd(name, reserve_oglo(), btypFn);
             return 0;
 

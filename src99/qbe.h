@@ -188,7 +188,7 @@ void emitcall(Node *n, Symb *sr) {
     char *name = n->l->s.u.v;
     if (!(ps = symget(name))) die("undeclared function %s", name);
     s = *ps;
-    if ((s.styp != Glo) && (s.styp != Ext))
+    if ((s.styp != Glo) && (s.styp != Ext) && (s.styp != Fn))
         bug(MINC_QBE_H ">>emitcall @ %d", __LINE__);
     isExtern = fitsWithin(s.btyp, B_EXTERN);
     for (a = n->r; a; a = a->r)
@@ -319,18 +319,15 @@ void emitwhile(Node *n) {
     putq(LABEL "while.end.%d\n", l+2);
 }
 
-void emitfunc(enum btyp t, char *fnname, NameType *params, Node *stmts) {
+void emitfunc(enum btyp tRet, char *fnname, NameType *params, Node *stmts) {
     NameType *p;  int i, sz;
     PP(emit, "emitFunc: %s", fnname);
-
-    symadd(fnname, reserve_oglo(), FUNC(t));
-    if (t == B_VOID)
+    if (tRet == B_VOID)
         putq("export function $%s(", fnname);
     else
-        putq("export function %s $%s(", fntyp(t), fnname);
+        putq("export function %s $%s(", fntyp(tRet), fnname);
     if ((p=params))
         do {
-            symadd(p->name, 0, p->btyp);
             putq("%s ", fntyp(p->btyp));
             putq(TEMP "%d", reserve_tmp());
             p = p->next;

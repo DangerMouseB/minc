@@ -3,13 +3,15 @@
 // OPEN: add static keyword
 void * f;
 int (*p) (void *, const char *, ...);
-int (*p2) (void *, const char *, ...);
 
 int main() {
+    int i;
+    i = 1;
+    int (*p2) (void *, const char *, ...);
     p = fprintf;
     f = stdout;
     p2 = p;
-    p2(f, "hello\n");
+    p2(f, "hello %d\n", i);
 }
 
 // OPEN: to test
