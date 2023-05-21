@@ -31,3 +31,8 @@ play/tmp.q
 binary_play
 
 play/hello
+play/a.out
+
+play/hello_pcc
+
+play/hello_pcc.*

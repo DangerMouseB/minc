@@ -32,6 +32,7 @@
 
 /*Beginning of C declarations*/
 
+#define MINC_MINC99_Y "minc99.y"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -321,7 +322,7 @@ Scale:
             default:
                 break;
         }
-        putq(INDENT TEMP "%d =l mul %d, ", tmp_seed, sz);
+        putq(QINDENT TEMP "%d =l mul %d, ", tmp_seed, sz);
         emitsymb(*r);
         putq("\n");
         r->u.n = reserve_tmp();
@@ -532,9 +533,9 @@ NameType * ptparametertypelistToParameters(Node * ptl) {
 }
 
 
-void parseFunctionPt(Node *ds, Node *d, Node* cs) {
+void process_function_definition(Node *ds, Node *d, Node* cs) {
     NameType *params = 0;  enum btyp t;  char *fnname;
-    PP(emit, "parseFunctionPt");
+    PP(emit, "process_function_definition");
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
     t = ptdeclarationspecifiersToBTypeId(ds);
@@ -554,65 +555,97 @@ void parseFunctionPt(Node *ds, Node *d, Node* cs) {
 }
 
 
-Node * parseInitDeclPt(Node *id, enum btyp btyp, int isExtern) {
-    Node *d, *decl, *ptl, *pd, *fd;  char *name;  enum btyp t;
+Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
+    Node *d, *decl, *ptl, *pd, *fd, *d2;  char *name;  enum btyp btyp, btypFn;  int isPtrToFn=0;
     assertTok(id, "id", pt_init_declarator, __LINE__);
     assertExists(d = id->l, "d", __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
     assertExists(d->r, "d->r", __LINE__);
     switch (d->r->tok) {
-        default:
-            die("programmer error");
+
         case IDENT:
             // variable declaration - local or global - optionally with init, not added to symbol table
+            // OPEN: handle brackets e.g. int (*p);
             name = d->r->s.u.v;
-            t = pointerise(btyp, d->l, 0);      // OPEN: handle array
-            if (t == B_VOID) die("invalid void declaration for %s", name);
-            if (isExtern)
-                t = BTIntersect(t, B_EXTERN);
+            btyp = pointerise(baseType, d->l, 0);      // OPEN: handle array
+            if (btyp == B_VOID) die("invalid void declaration for %s", name);
             decl = node(DeclVar, d->r, id->r, __LINE__);
-            decl->s.styp = Var;                    // if it turns out the declaration is global this can be changed to Glo later
-            decl->s.btyp = t;
+            if (isExtern) {
+                btyp = BTIntersect(btyp, B_EXTERN);
+                decl->s.styp = Ext;     // will be added to globals later
+            }
+            else
+                decl->s.styp = Var;     // changed later to Glo if it turns out that declaration is global
+            decl->s.btyp = btyp;
             decl->s.u.v = name;
-            symadd(name, 0, t);
+            symadd(name, 0, btyp);
             return decl;
+
         case func_def:
             // function declaration - can only be global so is added to symbol table
             fd = d->r;
-            name = fd->l->s.u.v;
+            if (fd->l->tok == pt_LP_declarator_RP) {
+                // OPEN: for mo just catch pointer to function, parse properly later
+                assertMissing(fd->l->r, "fd->l->r", __LINE__);
+                assertExists(fd->l->l, "fd->l->l", __LINE__);
+                assertTok(d2=fd->l->l, "fd->l->l", pt_declarator, __LINE__);
+                assertExists(d2->l, "d2->l", __LINE__);
+                assertExists(d2->r, "d2->r", __LINE__);
+                assertTok(d2->l, "d2->l", pt_pointer, __LINE__);
+                assertTok(d2->r, "d2->r", IDENT, __LINE__);
+                name = d2->r->s.u.v;
+                isPtrToFn = 1;
+            }
+            else {
+                name = fd->l->s.u.v;
+            }
+            btyp = pointerise(baseType, d->l, 0);      // OPEN: handle array, e.g. char *[] fred();
+            btypFn = FUNC(btyp);
+            if (isExtern) {
+                btypFn = BTIntersect(btypFn, B_EXTERN);
+                globals[next_oglo].styp = Ext;
+            }
+            else if (isPtrToFn) {
+                btypFn = IDIR(btypFn);
+                globals[next_oglo].styp = Glo;
+            }
+            else
+                globals[next_oglo].styp = Fn;
+            globals[next_oglo].btyp = btypFn;
+            globals[next_oglo].u.v = name;
+
+            // catch ellipsis
             int i = 1;
-            for (ptl=fd->r; ptl; ptl=ptl->r, i++) {
+            globals[next_oglo].i = 0;
+            for (ptl = fd->r; ptl; ptl = ptl->r, i++) {
                 assertTok(ptl, "fd->r", pt_parameter_type_list, __LINE__);
                 assertExists(pd = ptl->l, "ptl->l", __LINE__);
                 if (pd->tok == T_ELLIPSIS) {
-                    i_ellipsis[next_oglo] = i;
+                    globals[next_oglo].i = i;
                     break;
                 }
                 assertTok(pd, "pd", pt_parameter_declaration, __LINE__);
             }
-            PP(parse, "parseInitDeclPt encountered %s (ellipsis @ %d) @ %d", toktopp[d->r->tok], i, d->lineno);
-            t = pointerise(btyp, d->l, 0);      // OPEN: handle array, e.g. char *[] fred();
-            t = FUNC(t);
-            if (isExtern)
-                t = BTIntersect(t, B_EXTERN);
-            // add global var to sym table
-            globals[next_oglo].styp = Var;
-            globals[next_oglo].btyp = t;
-            globals[next_oglo].u.v = name;
-            symadd(name, reserve_oglo(), t);
+            if (!i) PP(parse, "parseInitDeclPt encountered %s (ellipsis @ %d) @ %d", toktopp[d->r->tok], i, d->lineno);
+
+            symadd(name, reserve_oglo(), btypFn);
+            return 0;
+
+        default:
+            bug(MINC_MINC99_Y ">>parseInitDeclPt @ %d", __LINE__);
             return 0;
     }
-    return 0;
 }
 
 
-void addDeclsToGlobals(Node *decls) {
+void process_external_declaration(Node *decls) {
+    PP(emit, "process_external_declaration");
     Node * decl;
     if (!decls) return;
     assertTok(decls, "decls", DeclVars, __LINE__);
     for (; decls; decls=decls->r) {
         decl = decls->l;
-        globals[next_oglo].styp = Glo;
+        globals[next_oglo].styp = (decl->s.styp == Var) ? Glo : decl->s.styp;
         globals[next_oglo].btyp = decl->s.btyp;
         globals[next_oglo].u.v = decl->s.u.v;
         symset(decl->s.u.v, reserve_oglo(), decl->s.btyp);
@@ -620,16 +653,16 @@ void addDeclsToGlobals(Node *decls) {
 }
 
 
-Node * mkdecls(Node *ds, Node *idl, int lineno) {
-    enum btyp t;  Node *start=0, *next, *current, *id, *decl;  int isExtern = 0;
+Node * mkDeclarations(Node *ds, Node *idl, int lineno) {
+    enum btyp baseType;  Node *start=0, *next, *current, *id, *decl;  int isExtern=0;
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
-    t = ptdeclarationspecifiersToBTypeId(ds);
+    baseType = ptdeclarationspecifiersToBTypeId(ds);
     isExtern = ptdeclarationspecifiersForExtern(ds);
     assertTok(idl, "idl", pt_init_declarator_list, __LINE__);
     for (; idl; idl=idl->r) {
         assertTok(idl, "idl", pt_init_declarator_list, __LINE__);
         assertExists(id=idl->l, "id", __LINE__);
-        if (decl=parseInitDeclPt(id, t, isExtern)) {
+        if (decl=parseInitDeclPt(id, baseType, isExtern)) {
             next = node(DeclVars, decl, 0, lineno);
             if (!start) current = start = next;
             else {
@@ -823,12 +856,9 @@ constant_expression
 : conditional_expression                                { $$ = $1; }
 ;
 
-// OPEN: how do we capture the following?
-// l=NULL, then l=declaration_specifiers, r=remainder
-// l=NULL or prior, r=this?
 declaration
 : declaration_specifiers ';'                            { nyi("declaration_specifiers ';'   =>   declaration"); }
-| declaration_specifiers init_declarator_list ';'       { PP(pt, "declaration_specifiers init_declarator_list ';'  =>  declaration"); $$ = mkdecls($1, $2, $%); }
+| declaration_specifiers init_declarator_list ';'       { PP(pt, "declaration_specifiers init_declarator_list ';'  =>  declaration"); $$ = mkDeclarations($1, $2, $%); }
 ;
 
 // reverse of init_declarator_list
@@ -955,7 +985,7 @@ declarator
 // node()
 direct_declarator
 : IDENTIFIER                                                                    { PP(pt, "#%s IDENTIFIER   =>   direct_declarator", $1->s.u.v); }
-| '(' declarator ')'                                                            { nyi("@ %d", $%); }
+| '(' declarator ')'                                                            { $$ = nodepp(pt_LP_declarator_RP, $2, 0, $%, pt, "'(' declarator ')'   =>   direct_declarator");}
 | direct_declarator '[' type_qualifier_list assignment_expression ']'           { nyi("@ %d", $%); }
 | direct_declarator '[' type_qualifier_list ']'                                 { nyi("@ %d", $%); }
 | direct_declarator '[' assignment_expression ']'                               { nyi("@ %d", $%); }
@@ -1122,13 +1152,13 @@ translation_unit
 ;
 
 external_declaration
-: function_definition                                   // emitted in the function_definition rule
-| declaration                                           { PP(pt, "declaration   =>   external_declaration"); addDeclsToGlobals($1); }
+: function_definition                                   // handled in the function_definition rule
+| declaration                                           { PP(pt, "declaration   =>   external_declaration"); process_external_declaration($1); }
 ;
 
 function_definition
-: declaration_specifiers declarator declaration_list compound_statement     { PP(pt, "declaration_specifiers declarator declaration_list compound_statement   =>   function_definition"); parseFunctionPt($1, $2, $4); }  // declarations are already captured so declaration list can be ignored
-| declaration_specifiers declarator compound_statement                      { PP(pt, "declaration_specifiers declarator compound_statement   =>   function_definition"); parseFunctionPt($1, $2, $3); }
+: declaration_specifiers declarator declaration_list compound_statement     { PP(pt, "declaration_specifiers declarator declaration_list compound_statement   =>   function_definition"); process_function_definition($1, $2, $4); }  // declarations are already captured so declaration list can be ignored
+| declaration_specifiers declarator compound_statement                      { PP(pt, "declaration_specifiers declarator compound_statement   =>   function_definition"); process_function_definition($1, $2, $3); }
 ;
 
 declaration_list
@@ -1326,7 +1356,7 @@ int yylex() {
         // OPEN: reallocate p to the correct size
         // OPEN: reuse strings?
         if (next_oglo == NGlo) die("too many globals");
-        globals[next_oglo].styp = Con;
+        globals[next_oglo].styp = Str;
         globals[next_oglo].btyp = B_CHAR_STAR;
         globals[next_oglo].u.v = p;
         yylval.n = node(LIT_STR, 0, 0, __LINE__);
@@ -1386,12 +1416,13 @@ void emitglobals() {
     for (int oglo = 0; oglo < next_oglo; oglo++) {
         btyp = globals[oglo].btyp;
         isExtern = fitsWithin(btyp, B_EXTERN);
-        if (globals[oglo].styp == Glo && !isExtern) putq("data " GLOBAL "%d = { %c 0 }\n", oglo, vtyp(btyp));
+        // OPEN: add alignment and maybe use z to init the memory to 0
+        if (globals[oglo].styp == Glo && !isExtern) putq("data " GLOBAL "%s = { %c 0 }\n", globals[oglo].u.v, regtyp(btyp));
     }
     putq("\n# STRING CONSTANTS\n");
     for (int oglo = 0; oglo < next_oglo; oglo++)
-        if ((globals[oglo].styp == Con) && (globals[oglo].btyp == B_CHAR_STAR))
-            putq("data " GLOBAL "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
+        if ((globals[oglo].styp == Str) && (globals[oglo].btyp == B_CHAR_STAR))
+            putq("data " STRING "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
 }
 
 int main(int argc, char*argv[]) {

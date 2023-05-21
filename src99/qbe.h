@@ -1,15 +1,17 @@
 #ifndef MINC_QBE_H
-#define MINC_QBE_H
+#define MINC_QBE_H "qbe.h"
 
 #include "minc.h"
 
 
 // code gen constants - PVAR is the pointer to the memory that backs a C variable
-#define GLOBAL  "$g"
+#define GLOBAL  "$"
+#define QEXTERN  "$"
+#define STRING  "$s"
 #define TEMP    "%%."
 #define PVAR    "%%_"
 #define LABEL   "@"
-#define INDENT "\t"
+#define QINDENT  "    "
 
 
 
@@ -54,7 +56,7 @@ Symb i64_to_f64(Symb s);
 
 // we use w (32 bit) temps except for B_U64 and B_I64 which uses l (64 bit) temps
 
-char vtyp(enum btyp btyp) {
+char regtyp(enum btyp btyp) {
     switch (KIND(btyp)) {
         case B_I8:
         case B_U8:
@@ -113,16 +115,17 @@ char * fntyp(enum btyp btyp) {
 }
 
 Symb lval(Node *n) {
-    Symb s;
+    Symb s, *_s;
     switch (n->tok) {
         default:
             die("invalid lvalue");
         case IDENT:
-            if (!symget(n->s.u.v)) {
+            _s = symget(n->s.u.v);
+            if (!_s) {
                 PP(error, "%s is not defined\n", n->s.u.v);
                 die("undefined variable");
             }
-            s = *symget(n->s.u.v);
+            s = *_s;
             break;
         case OP_DEREF:
             s = emitexpr(n->l);
@@ -135,12 +138,18 @@ Symb lval(Node *n) {
 
 void emitlocaldecl(Node *decl) {
     int sz = SIZE(decl->s.btyp);
-    putq(INDENT PVAR "%s =l alloc%d %d\n", decl->l->s.u.v, sz, sz);
+    putq(QINDENT PVAR "%s =l alloc%d %d\n", decl->l->s.u.v, sz, sz);
     if (decl->r) emitexpr(node(OP_ASSIGN, decl->l, decl->r, __LINE__));
 }
 
 void emitsymb(Symb s) {
     switch (s.styp) {
+        case Con:
+            putq("%d", s.u.n);
+            break;
+        case Str:
+            putq(STRING "%d", s.u.n);
+            break;
         case Tmp:
             putq(TEMP "%d", s.u.n);
             break;
@@ -148,50 +157,80 @@ void emitsymb(Symb s) {
             putq(PVAR "%s", s.u.v);
             break;
         case Glo:
-            putq(GLOBAL "%d", s.u.n);
+            putq(GLOBAL "%s", s.u.v);
             break;
-        case Con:
-            putq("%d", s.u.n);
+        case Ext:
+            putq("extern " QEXTERN "%s", s.u.v);
             break;
+        default:
+            bug("emitsymb");
     }
 }
 
-Symb emitload(Symb d, Symb s) {
-    putq(INDENT);
-    emitsymb(d);
-    putq(" =%c load%s ", vtyp(d.btyp & 0xffffff7f), fntyp(d.btyp & 0xffffff7f));
-    if (fitsWithin(d.btyp, B_EXTERN)) putq("extern ");
-    emitsymb(s);
+Symb emitload(Symb tmp, Symb m) {    // tmp is temp, m is memory
+    int isFn;
+    isFn = (tmp.btyp == m.btyp) && fitsWithin(tmp.btyp, B_FN);
+    if (fitsWithin(tmp.btyp, B_EXTERN)) tmp.btyp = minus(tmp.btyp, B_EXTERN);
+    putq(QINDENT);
+    emitsymb(tmp);
+    if (isFn)
+        putq(" =%c add ", regtyp(tmp.btyp & 0xffffff7f));
+    else
+        putq(" =%c load%s ", regtyp(tmp.btyp & 0xffffff7f), fntyp(tmp.btyp & 0xffffff7f));
+    emitsymb(m);
+    if (isFn) putq(", 0");
     putq("\n");
-    d.btyp &= 0xffffff7f;
-    return d;
+    return tmp;
 }
 
 void emitcall(Node *n, Symb *sr) {
-    Node *a;  int iEllipsis, iArg;  Symb *s;  int isExtern=0;
+    Node *a;  int iEllipsis, iArg;  Symb *ps, s, sfn;  int isExtern=0;
     char *name = n->l->s.u.v;
-    if (!(s=symget(name))) die("undeclared function %s", name);
-    if (s->styp != Glo) die("programmer error @ %d", __LINE__);
-    if ((KIND(s->btyp) & 0x7f) != B_FN) die("programmer error @ %d", __LINE__);
-    iEllipsis = i_ellipsis[s->u.n];
-    isExtern = fitsWithin(s->btyp, B_EXTERN);
-    sr->btyp = tRet(s->btyp) & 0x7f7f7f7f;
-    for (a=n->r; a; a=a->r)
+    if (!(ps = symget(name))) die("undeclared function %s", name);
+    s = *ps;
+    if ((s.styp != Glo) && (s.styp != Ext))
+        bug(MINC_QBE_H ">>emitcall @ %d", __LINE__);
+    isExtern = fitsWithin(s.btyp, B_EXTERN);
+    for (a = n->r; a; a = a->r)
         a->s = emitexpr(a->l);
-    putq(INDENT);
-    if (sr->btyp == B_VOID) {
-        putq("call ");
-        if (isExtern) putq("extern ");
-        putq("$%s(", name);
+    if ((KIND(s.btyp) & 0x7f) == B_FN) {
+        sr->btyp = tRet(s.btyp) & 0x7f7f7f7f;
+        putq(QINDENT);
+        if (sr->btyp == B_VOID) {
+            putq("call ");
+            if (isExtern) putq("extern ");
+            putq("$%s(", name);
+        } else {
+            emitsymb(*sr);
+            putq(" =%s call ", fntyp(sr->btyp));
+            if (isExtern) putq("extern ");
+            putq("$%s(", name);
+        }
     }
-    else {
-        emitsymb(*sr);
-        putq(" =%s call ", fntyp(sr->btyp));
-        if (isExtern) putq("extern ");
-        putq("$%s(", name);
+    else if (KIND(s.btyp) == B_PTR && KIND(DREF(s.btyp)) == B_FN) {
+        sr->btyp = tRet(DREF(s.btyp)) & 0x7f7f7f7f;
+        isExtern = fitsWithin(s.btyp, B_EXTERN);
+        sfn.styp = Tmp;
+        sfn.u.n = reserve_tmp();
+        sfn.btyp = s.btyp;
+        sfn = emitload(sfn, s);
+        putq(QINDENT);
+        if (sfn.btyp == B_VOID) {
+            putq("call ");
+            if (isExtern) putq("extern ");
+            emitsymb(sfn);
+            putq("(");
+        } else {
+            emitsymb(*sr);
+            putq(" =%s call ", fntyp(sr->btyp));
+            if (isExtern) putq("extern ");
+            emitsymb(sfn);
+            putq("(");
+        }
     }
-
-    a = n->r; iArg = 1;
+    else
+        bug(MINC_QBE_H ">>emitcall @ %d", __LINE__);
+    a = n->r;  iArg = 1;  iEllipsis = s.i;
     while (a) {
         if (iArg == iEllipsis) putq("..., ");
         putq("%s ", fntyp(a->s.btyp & 0xffffff7f));
@@ -209,7 +248,7 @@ void emitboolop(Node *n, int tn, char *tlabel, int fn, char*flabel) {
     switch (n->tok) {
         default:
             s = emitexpr(n); /* OPEN: insert comparison to 0 with proper type */
-            putq(INDENT "jnz ");
+            putq(QINDENT "jnz ");
             emitsymb(s);
             putq(", " LABEL "%s.%d, " LABEL "%s.%d\n", tlabel, tn, flabel, fn);
             break;
@@ -230,17 +269,17 @@ void emitboolop(Node *n, int tn, char *tlabel, int fn, char*flabel) {
 
 void emitbreak(Node *n, int b) {
     if (b < 0) die("break not in loop");
-    putq(INDENT "jmp " LABEL "false.%d\n", b);
+    putq(QINDENT "jmp " LABEL "false.%d\n", b);
 }
 
 void emitret(Node *n) {
     Symb x;
     if (n->l) {
         x = emitexpr(n->l);
-        putq(INDENT "ret ");
+        putq(QINDENT "ret ");
         emitsymb(x);
     } else
-        putq(INDENT "ret");
+        putq(QINDENT "ret");
     putq("\n");
 }
 
@@ -262,7 +301,7 @@ int emitifelse(Node *n, int b) {
     putq(LABEL "true.%d\n", l);
     e = n->r;
     if (!(r=emitstmt(e->l, b)))
-        putq(INDENT "jmp " LABEL "if.end.%d\n", l+2);
+        putq(QINDENT "jmp " LABEL "if.end.%d\n", l+2);
     putq(LABEL "false.%d\n", l+1);
     if (!(r &= emitstmt(e->r, b)))
         putq(LABEL "if.end.%d\n", l+2);
@@ -276,7 +315,7 @@ void emitwhile(Node *n) {
     emitboolop(n->l, l+1, "while.body", l+2, "while.end");
     putq(LABEL "while.body.%d\n", l+1);
     if (!emitstmt(n->r, l+2))
-        putq(INDENT "jmp " LABEL "while.cond.%d\n", l);
+        putq(QINDENT "jmp " LABEL "while.cond.%d\n", l);
     putq(LABEL "while.end.%d\n", l+2);
 }
 
@@ -301,12 +340,12 @@ void emitfunc(enum btyp t, char *fnname, NameType *params, Node *stmts) {
     putq(LABEL "start.%d\n", reserve_lbl(1));
     for (i=TMP_START, p=params; p; i++, p=p->next) {
         sz = SIZE(p->btyp);
-        putq(INDENT PVAR "%s =l alloc%d %d\n", p->name, sz, sz);
-        putq(INDENT "store%c " TEMP "%d", storetyp(p->btyp), i);
+        putq(QINDENT PVAR "%s =l alloc%d %d\n", p->name, sz, sz);
+        putq(QINDENT "store%c " TEMP "%d", storetyp(p->btyp), i);
         putq(", " PVAR "%s\n", p->name);
     }
     putq(LABEL "body.%d\n", reserve_lbl(1));
-    if (!emitstmt(stmts, -1)) putq(INDENT "ret\n");    // for the case of a void function with no return statement
+    if (!emitstmt(stmts, -1)) putq(QINDENT "ret\n");    // for the case of a void function with no return statement
     putq("}\n\n");
 }
 
@@ -366,17 +405,19 @@ Symb emitexpr(Node *n) {
             l = reserve_lbl(3);
             emitboolop(n, l, "bool.true", l+1, "bool.false");
             putq(LABEL "bool.true.%d\n", l);
-            putq(INDENT "jmp " LABEL "bool.end.%d\n", l+2);
+            putq(QINDENT "jmp " LABEL "bool.end.%d\n", l+2);
             putq(LABEL "bool.false.%d\n", l+1);
-            putq(INDENT "jmp " LABEL "bool.end.%d\n", l+2);
+            putq(QINDENT "jmp " LABEL "bool.end.%d\n", l+2);
             putq(LABEL "bool.end.%d\n", l+2);
-            putq(INDENT);
+            putq(QINDENT);
             sr.btyp = B_I32;
             emitsymb(sr);
             putq(" =w phi " LABEL "bool.true.%d 1, " LABEL "bool.false.%d 0\n", l, l+1);
             break;
 
         case IDENT:
+            // NEXT: need to handle pointers to functions as they are a little different semantically
+            // is there a hack to get this working in the short term? probably
             s0 = lval(n);
             sr.btyp = s0.btyp;
             sr = emitload(sr, s0);
@@ -403,7 +444,7 @@ Symb emitexpr(Node *n) {
             break;
 
         case LIT_STR:
-            sr.styp = Glo;
+            sr.styp = Str;
             sr.u.n = n->s.u.n;
             sr.btyp = B_CHAR_STAR;
             break;
@@ -450,10 +491,8 @@ Symb emitexpr(Node *n) {
             // sign extend s0.
             // we only ever store the correct number of bytes from s0 into s1
             s0 = emitexpr(n->r);
-            if (s0.btyp == 0) {
-                s0 = emitexpr(n->r);
+            if (s0.btyp == 0)
                 die("s0.btyp == 0");
-            }
             s1 = lval(n->l);        // always memory
             sr = s0;
 
@@ -477,6 +516,10 @@ Symb emitexpr(Node *n) {
                     (fitsWithin(s1.btyp, B_PTR) && s0.btyp == B_VOID_STAR) ||
                     ((s1.btyp == B_VOID_STAR && fitsWithin(s0.btyp, B_PTR)))
                 ) {}
+            else if (
+                    fitsWithin(s1.btyp, B_FN_PTR) && fitsWithin(KIND(s0.btyp), B_FN)
+                )
+            {}
             else {
                 if (s1.btyp != s0.btyp) {
                     s0 = emitexpr(n->r);
@@ -485,7 +528,7 @@ Symb emitexpr(Node *n) {
             }
             // END OPEN:
 
-            putq(INDENT "store%c ", storetyp(s1.btyp));
+            putq(QINDENT "store%c ", storetyp(s1.btyp));
             goto emit_s0_s1;
 
         case OP_INC:
@@ -515,13 +558,13 @@ Symb emitexpr(Node *n) {
             // t = op s0 s1
             sr.btyp = prom(o, &s0, &s1);
             if (strchr(neltl, n->tok)) {
-                sprintf(ty, "%c", vtyp(sr.btyp));
+                sprintf(ty, "%c", regtyp(sr.btyp));
                 sr.btyp = B_I32;            // OPEN: should be a B_BOOL
             } else
                 strcpy(ty, "");
-            putq(INDENT);
+            putq(QINDENT);
             emitsymb(sr);
-            putq(" =%c", vtyp(sr.btyp));
+            putq(" =%c", regtyp(sr.btyp));
             putq(" %s%s ", otoa[o], ty);
         emit_s0_s1:
             emitsymb(s0);
@@ -531,13 +574,13 @@ Symb emitexpr(Node *n) {
             break;
     }
     if (n->tok == OP_SUB  &&  fitsWithin(s0.btyp, B_PTR)  &&  fitsWithin(s1.btyp, B_PTR)) {
-        putq(INDENT TEMP "%d =l div ", tmp_seed);
+        putq(QINDENT TEMP "%d =l div ", tmp_seed);
         emitsymb(sr);
         putq(", %d\n", SIZE(DREF(s0.btyp)));
         sr.u.n = reserve_tmp();
     }
     if (n->tok == OP_INC  ||  n->tok == OP_DEC) {
-        putq(INDENT "store%c ", storetyp(st.btyp));
+        putq(QINDENT "store%c ", storetyp(st.btyp));
         emitsymb(sr);
         putq(", ");
         emitsymb(st);
@@ -549,7 +592,7 @@ Symb emitexpr(Node *n) {
 
 
 Symb i8_to_i16(Symb s) {
-    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
+    putq(QINDENT TEMP "%d =w extsb ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -559,7 +602,7 @@ Symb i8_to_i16(Symb s) {
 }
 
 Symb i8_to_i32(Symb s) {
-    putq(INDENT TEMP "%d =w extsb ", tmp_seed);
+    putq(QINDENT TEMP "%d =w extsb ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -569,7 +612,7 @@ Symb i8_to_i32(Symb s) {
 }
 
 Symb i8_to_i64(Symb s) {
-    putq(INDENT TEMP "%d =l extsb ", tmp_seed);
+    putq(QINDENT TEMP "%d =l extsb ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -579,7 +622,7 @@ Symb i8_to_i64(Symb s) {
 }
 
 Symb u8_to_u64(Symb s) {
-    putq(INDENT TEMP "%d =l extub ", tmp_seed);
+    putq(QINDENT TEMP "%d =l extub ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -589,7 +632,7 @@ Symb u8_to_u64(Symb s) {
 }
 
 Symb i16_to_i32(Symb s) {
-    putq(INDENT TEMP "%d =w extsh ", tmp_seed);
+    putq(QINDENT TEMP "%d =w extsh ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -599,7 +642,7 @@ Symb i16_to_i32(Symb s) {
 }
 
 Symb i16_to_i64(Symb s) {
-    putq(INDENT TEMP "%d =l extsh ", tmp_seed);
+    putq(QINDENT TEMP "%d =l extsh ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -609,7 +652,7 @@ Symb i16_to_i64(Symb s) {
 }
 
 Symb u16_to_u64(Symb s) {
-    putq(INDENT TEMP "%d =l extuh ", tmp_seed);
+    putq(QINDENT TEMP "%d =l extuh ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -619,7 +662,7 @@ Symb u16_to_u64(Symb s) {
 }
 
 Symb i32_to_i64(Symb s) {
-    putq(INDENT TEMP "%d =l extsw ", tmp_seed);
+    putq(QINDENT TEMP "%d =l extsw ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -629,7 +672,7 @@ Symb i32_to_i64(Symb s) {
 }
 
 Symb u32_to_u64(Symb s) {
-    putq(INDENT TEMP "%d =l extuw ", tmp_seed);
+    putq(QINDENT TEMP "%d =l extuw ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -640,7 +683,7 @@ Symb u32_to_u64(Symb s) {
 
 Symb i8_to_f64(Symb s) {
     i8_to_i64(s);
-    putq(INDENT TEMP "%d =d swtof ", tmp_seed);
+    putq(QINDENT TEMP "%d =d swtof ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -651,7 +694,7 @@ Symb i8_to_f64(Symb s) {
 
 Symb i16_to_f64(Symb s) {
     i16_to_i64(s);
-    putq(INDENT TEMP "%d =d swtof ", tmp_seed);
+    putq(QINDENT TEMP "%d =d swtof ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -661,7 +704,7 @@ Symb i16_to_f64(Symb s) {
 }
 
 Symb i32_to_f64(Symb s) {
-    putq(INDENT TEMP "%d =d swtof ", tmp_seed);
+    putq(QINDENT TEMP "%d =d swtof ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;
@@ -671,7 +714,7 @@ Symb i32_to_f64(Symb s) {
 }
 
 Symb i64_to_f64(Symb s) {
-    putq(INDENT TEMP "%d =d sltof ", tmp_seed);
+    putq(QINDENT TEMP "%d =d sltof ", tmp_seed);
     emitsymb(s);
     putq("\n");
     s.styp = Tmp;

@@ -26,6 +26,7 @@ enum {
 
 void PP(int level, char *msg, ...);
 void die(char *msg, ...);
+void bug(char *msg, ...);
 
 
 
@@ -41,7 +42,7 @@ void die(char *msg, ...);
 #define _hc2 20
 
 enum btyp {
-    B_CHAR = _hc1+5,// B_I8 - implementation defined (poss with compiler flags)
+    B_CHAR = _hc1+5,        // B_I8 - implementation defined (poss with compiler flags)
     B_U8  = _hc1+1,         // unsigned char
     B_U16 = _hc1+2,         // unsigned short
     B_U32 = _hc1+3,         // unsigned int, unsigned
@@ -67,8 +68,11 @@ enum btyp {
     B_FN = _hc2+6,
     B_VOID_STAR = (B_VOID << 8) | B_PTR,
     B_CHAR_STAR = (B_CHAR << 8) | B_PTR,
+    B_FN_PTR = (B_FN << 8) | B_PTR,
 
     B_EXTERN = 128,
+    B_EXTERN_FN = B_EXTERN + B_FN,
+    B_EXTERN_FN_PTR = B_EXTERN + B_FN_PTR,
 };
 
 static char *btyptopp[] = {
@@ -82,7 +86,7 @@ static char *btyptopp[] = {
 #define IDIR(t) (((t) << 8) + B_PTR)
 #define FUNC(t) (((t) << 8) + B_FN)
 #define DREF(t) ((t) >> 8)
-#define KIND(t) ((t) & 255)
+#define KIND(t) ((t) & 0xff)
 #define SIZE(t) (                                   \
     t == T_VOID ? (die("void has no size"), 0) : (  \
 	t == B_I32 ? 4 : (                              \
@@ -90,16 +94,16 @@ static char *btyptopp[] = {
 )))
 
 
-// coding standards - always use signed ints so differences can be taken, unsigned are only ever needed for debugging
-
-
 int fitsWithin(enum btyp a, enum btyp b) {
     // should answer a tuple {cacheID, doesFit, tByT, distance}
     // tByT can just be a T sorted list (not worth doing a hash)
     if (a == b) return 1;
+    if ((b == B_EXTERN) && (a & B_EXTERN)) return 1;
+    if ((b == B_FN) && ((a & 0x7f) == B_FN)) return 1;
+    if ((b == B_EXTERN_FN_PTR) && ((a & 0xffff) == B_EXTERN_FN_PTR)) return 1;
+    if ((b == B_FN_PTR) && ((a & 0xff7f) == B_FN_PTR)) return 1;
     if (b & 0xFFFFFF00) die("b must be a simple type");
     if ((a & 0x000000FF) == b) return 1;
-    if ((b == B_EXTERN) && (a & B_EXTERN)) return 1;
     return 0;
 }
 
@@ -133,6 +137,12 @@ void fPPT(FILE *f, enum btyp t) {
 enum btyp BTIntersect(enum btyp a, enum btyp b) {
     if ((a & 0x00000080) == 0 && (b == B_EXTERN)) return a | B_EXTERN;
     nyi("BTIntersect");
+    return 0;
+}
+
+enum btyp minus(enum btyp a, enum btyp b) {
+    if (b & 0x80) return a & 0xffffff7f;
+    nyi("minus");
     return 0;
 }
 
@@ -274,6 +284,7 @@ enum tok {
     pt_array                    = _pt+18,
     pt_specifier_qualifier_list = _pt+19,
     pt_function_specifier       = _pt+20,
+    pt_LP_declarator_RP         = _pt+21,
 
 };
 
@@ -314,7 +325,7 @@ static char *toktopp[] = {
         [pt_storage_class_specifier] = "pt_storage_class_specifier",    [pt_type_qualifier] = "pt_type_qualifier",
         [pt_pointer] = "pt_pointer",                                    [pt_type_qualifier_list] = "pt_type_qualifier_list",
         [pt_type_name] = "pt_type_name",                                [pt_specifier_qualifier_list] = "pt_specifier_qualifier_list",
-        [pt_function_specifier] = "pt_function_specifier",
+        [pt_function_specifier] = "pt_function_specifier",              [pt_LP_declarator_RP] = "pt_LP_declarator_RP",
 };
 
 
@@ -325,17 +336,18 @@ typedef struct Symb Symb;
 
 struct Symb {
     enum {                  // 4
-        Nul = 0,            // the null set, none, etc, uninitialised like the null pointer
-        Con = 1,            // constant - integer, double, string with type btyp
-        Tmp = 2,            // qbe temporary - hidden from user
-        Var = 3,            // local variable, with type btyp
-        Glo = 4,            // global variable, with type btyp
-        Str = 5,            // global string, with type B_CHAR_STAR
-        Fn  = 6,            // function, with type btyp
+        Con = 1,            // constant - integer or double with type btyp
+        Str = 2,            // literal string
+        Tmp = 3,            // qbe temporary - hidden from user
+        Var = 4,            // local variable, with type btyp - named
+        Glo = 5,            // global variable, with type btyp - numbered
+        Ext = 6,            // external variable or function, with type btyp, named
+        Fn  = 7,            // function, with type btyp - either a forward declare or definition
     } styp;
+    int i;                  // 4 - styp defined - e.g. string number, iEllipsis
     enum btyp btyp;         // 4 (upto ***<type>)
     union {                 // 8
-        int n;              // oglo, or integer constant
+        int n;              // integer constant
         char *v;            // string constant, name of fn or variable (and in short term structs, unions, typedefs etc) OPEN: change v to name
 //        Node *pn;           // pointer to a node
         double d;           // double constant
@@ -351,11 +363,6 @@ struct NameType {
 };
 
 
-// hResult = disp(add2, PTR(s->l), COUNT(5), PTR(&res));
-
-
-// if typ were 8 bytes we could use NaN boxing - but for the compiler unnecessary - however we could reuse the jones
-// runtime here
 // see https://peps.python.org/pep-3123/
 //struct TV {
 //    enum tok tok;
@@ -363,7 +370,7 @@ struct NameType {
 
 struct Node {               // 40 bytes
 //    struct TV t;            // 4
-    enum tok tok;             // 4
+    enum tok tok;           // 4
     unsigned int lineno;    // 4
     struct Symb s;          // 4 + 4 + 8
     struct Node *l, *r;     // 8 + 8
@@ -427,7 +434,6 @@ static Node *z;
 
 int next_oglo = 1;              // 0 is reserved to mean a local variable - wasting slots below
 Symb globals[NGlo];             // global literal strings, variables and functions
-int i_ellipsis[NGlo];           // OPEN: use a B_FN to properly capture the signature
 
 
 
@@ -436,13 +442,12 @@ int i_ellipsis[NGlo];           // OPEN: use a B_FN to properly capture the sign
 // ---------------------------------------------------------------------------------------------------------------------
 
 struct {
-    char name[SYM_NAME_MAX];        // 32
-    enum btyp btyp;                 // 4
-    int glo;                        // 4 - 0 means local else an offset into globals
+    char name[SYM_NAME_MAX];    // 32
+    enum btyp btyp;             // 4
+    int glo;                    // 4 - 0 means local else an offset into globals
 }
 _symtable[NVar];                // hash table of all defined variables - i.e. current locals and globals
 Symb _tsym[1];
-char _symnamebuf[SYM_NAME_MAX];
 
 void symclr() {
     for (unsigned h=0; h<NVar; h++)
@@ -498,15 +503,28 @@ Symb * symget(char *name) {
     unsigned h = h0;
     do {
         if (strcmp(_symtable[h].name, name) == 0) {
-            _tsym->btyp = _symtable[h].btyp;
             if (_symtable[h].glo) {
-                _tsym->styp = Glo;
-                _tsym->u.n = _symtable[h].glo;
+                _tsym->styp = globals[_symtable[h].glo].styp;
+                _tsym->i = globals[_symtable[h].glo].i;
+                _tsym->btyp = globals[_symtable[h].glo].btyp;
+                switch (_tsym->styp) {
+                    case Con:
+                    case Str:
+                        _tsym->u = globals[_symtable[h].glo].u;
+                        break;
+                    case Glo:
+                    case Ext:
+                        _tsym->u.v = _symtable[h].name;
+                        break;
+                    default:
+                        bug("symget");
+                }
             }
             else {
                 _tsym->styp = Var;
-                strncpy(_symnamebuf, name, SYM_NAME_MAX);
-                _tsym->u.v = _symnamebuf;
+                _tsym->i = 0;
+                _tsym->btyp = _symtable[h].btyp;
+                _tsym->u.v = _symtable[h].name;
             }
             return _tsym;
         }
@@ -529,6 +547,10 @@ void assertExists(void *p, char* varname, int lineno) {
     if (!p) die("missing %s @ %d", varname, lineno);
 }
 
+void assertMissing(void *p, char* varname, int lineno) {
+    if (p) die("not missing %s @ %d", varname, lineno);
+}
+
 void die_(char *preamble, char *msg, va_list args) {
     fprintf(stderr, "\nbefore end of line %d: ", isrcline);
     fprintf(stderr, "%s", preamble);
@@ -549,6 +571,13 @@ void nyi(char *msg, ...) {
     va_list args;
     va_start(args, msg);
     die_("nyi: ", msg, args);
+    va_end(args);
+}
+
+void bug(char *msg, ...) {
+    va_list args;
+    va_start(args, msg);
+    die_("bug: ", msg, args);
     va_end(args);
 }
 
@@ -590,7 +619,6 @@ void scanLineAndSrcFfn() {
 void incLine() {isrcline++;}
 
 int reserve_lbl(int n) {int l = lbl_seed; lbl_seed += n; return l;}
-
 int reserve_tmp() {return tmp_seed++;}
 int reserve_oglo() {return next_oglo++;}
 

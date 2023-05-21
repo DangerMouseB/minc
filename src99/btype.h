@@ -1,5 +1,5 @@
 #ifndef AJ_BTYPE_H
-#define AJ_BTYPE_H
+#define AJ_BTYPE_H "btype.h"
 
 #include "buckets.h"
 
@@ -13,6 +13,15 @@
 
 
 // addressOf and deref - may create new types
+
+
+// first do intersections - need to be able to do hash map of btyp *, null terminated just like strings - use the one
+//      I found last year
+// need exclusions for M8, M16, M32, M64 -> i8: m8 & i8_ or poss i8: m8_ & i & signed, etc
+// second syms and nominals
+// ptr1, const1, ptr2, const2, ptr3, const3, extern, the basic c types
+// also need a test framework - python?
+// need counting sort too
 
 
 enum bmetatype {
@@ -107,6 +116,8 @@ struct BTypeManager {
     Buckets strings;                    // null terminated char* (utf8)
     enum bexclusioncat *bexclusioncat_byBTypeId;    // this could also be done as a list of types per category which makes adding CCY etc easier
 };
+
+
 
 
 #endif // AJ_BTYPE_H
