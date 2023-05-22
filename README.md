@@ -1,5 +1,5 @@
 # minc
-A minimal C compiler with a QBE backend (based on minic)
+A minimal C compiler with a QBE backend (based on minic by Quentin Carbonneaux)
 
 - uses c99 grammar from https://www.quut.com/c/ANSI-C-grammar-y-1999.html
 - added line numbers and comments to miniyacc - https://c9x.me/yacc/
@@ -11,7 +11,13 @@ goals:
 - learn QBE IR to use in bones
 - learn C-ABI (including C++ exception handling)
 - learn GAS
-- develop components for bones type system, bones vm and a Python in memory compiler (the most basic form of JIT)
+- develop components for bones type system, bones vm and a Python in memory compiler (the most basic form of JIT),
+  - code generation
+  - memory management
+  - type system
+  - multidispatch
+  - exception handling
+  - debugging
 
 next:
 - get knight.c working again
@@ -37,3 +43,7 @@ https://silcnitc.github.io/yacc.html#:~:text=2.1%20Declarations&text=The%20C%20D
 https://github.com/ibara/yacc
 
 https://github.com/ShamithaUdupa/Simple-C-Compiler
+
+
+https://cdecl.org/
+

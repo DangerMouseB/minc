@@ -13,22 +13,6 @@
 //
 // ---------------------------------------------------------------------------------------------------------------------
 
-/*
-
- minc, a minimal C derrived from minic by Quentin Carbonneaux, intended as an example in generating QBE IR and a
- place do develop more general componets including code generation, memory management, type system, multidispatch,
- exception handling, and more.
-
- code should be simple (in the Rich Hickey sense) and easy to understand.
-
- yacc grammar was lifted verbatum from https://www.quut.com/c/ANSI-C-grammar-y-1999.html
-
- Quentin's miniyacc has been extended to allow comments and provide line numbers
-
- https://cdecl.org/
-
-*/
-
 
 /*Beginning of C declarations*/
 
@@ -1374,7 +1358,7 @@ int yylex() {
         // OPEN: reallocate p to the correct size
         // OPEN: reuse strings?
         if (next_oglo == NGlo) die("too many globals");
-        // store the char * in the globals for emission
+        // store the char * in the globals for emission later on, OPEN: add a strings array
         globals[next_oglo].styp = Str;
         globals[next_oglo].btyp = B_CHAR_STAR;
         globals[next_oglo].u.v = p;

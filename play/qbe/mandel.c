@@ -7,9 +7,7 @@
 #include <SDL2/SDL.h>
 
 void *rnd;
-int W;
-int H;
-int *col;
+int W, H, *col;
 
 void plot(int x, int y) {
 	int n, fx, fy, zx, zy, nx, ny;
@@ -34,9 +32,7 @@ void plot(int x, int y) {
 }
 
 int main() {
-	int c, n, x, y, *ie;
-	void *e, *win;
-
+	int c, n, x, y, *ie;  void *e, *win;
 	W = 800;
 	H = 800;
 	SDL_Init(32);

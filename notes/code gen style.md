@@ -1,5 +1,5 @@
 
-Quite like the style emitted by cproc but using OTBS
+Quite like the style emitted by cproc but using OTBS, i.e.:
 
 ```
 export w fred () {
