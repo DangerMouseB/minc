@@ -1374,12 +1374,16 @@ int yylex() {
         // OPEN: reallocate p to the correct size
         // OPEN: reuse strings?
         if (next_oglo == NGlo) die("too many globals");
+        // store the char * in the globals for emission
         globals[next_oglo].styp = Str;
         globals[next_oglo].btyp = B_CHAR_STAR;
         globals[next_oglo].u.v = p;
+        globals[next_oglo].i = next_str;
+        // keep the id of the string on the LIT_STR node
         yylval.n = node(LIT_STR, 0, 0, __LINE__);
-        yylval.n->s.u.n = next_oglo;
         yylval.n->s.btyp = B_CHAR_STAR;
+        yylval.n->s.i = next_str;
+        reserve_str();
         reserve_oglo();
         PP(lex, "\"%s\" ", p);
         return STRING_LITERAL;
@@ -1429,18 +1433,27 @@ int yylex() {
 
 // OPEN: refactor this so globals and ir emission are not complected
 void emitglobals() {
-    enum btyp btyp;  int isExtern;
-    putq("\n# GLOBAL VARIABLES\n");
+    enum btyp btyp;  int isExtern;  int emitGloHeader = 1, emitStrHeader = 1;
     for (int oglo = 0; oglo < next_oglo; oglo++) {
         btyp = globals[oglo].btyp;
         isExtern = fitsWithin(btyp, B_EXTERN);
         // OPEN: add alignment and maybe use z to init the memory to 0
-        if (globals[oglo].styp == Glo && !isExtern) putq("data " GLOBAL "%s = { %c 0 }\n", globals[oglo].u.v, regtyp(btyp));
+        if (globals[oglo].styp == Glo && !isExtern) {
+            if (emitGloHeader) {
+                putq("\n# GLOBAL VARIABLES\n");
+                emitGloHeader = 0;
+            }
+            putq("data " GLOBAL "%s = { %c 0 }\n", globals[oglo].u.v, regtyp(btyp));
+        }
     }
-    putq("\n# STRING CONSTANTS\n");
     for (int oglo = 0; oglo < next_oglo; oglo++)
-        if ((globals[oglo].styp == Str) && (globals[oglo].btyp == B_CHAR_STAR))
-            putq("data " STRING "%d = { b \"%s\", b 0 }\n", oglo, globals[oglo].u.v);
+        if ((globals[oglo].styp == Str) && (globals[oglo].btyp == B_CHAR_STAR)) {
+            if (emitStrHeader) {
+                putq("\n# STRING CONSTANTS\n");
+                emitStrHeader = 0;
+            }
+            putq("data " STRING "%d = { b \"%s\", b 0 }\n", globals[oglo].i, globals[oglo].u.v);
+        }
 }
 
 int main(int argc, char*argv[]) {

@@ -38,11 +38,11 @@ export function $print(l %.1, w %.2, l %.3) {
     jnz %.14, @true.10, @false.11
 @true.10
     %.26 =l loadl %_s
-    %.25 =w call extern $fprintf(l %.26, l $s9)
+    %.25 =w call extern $fprintf(l %.26, l $.s1)
     jmp @if.end.12
 @false.11
     %.29 =l loadl %_s
-    %.28 =w call extern $fprintf(l %.29, l $s10)
+    %.28 =w call extern $fprintf(l %.29, l $.s2)
 @if.end.12
     %.32 =w loadw %_i
     %.31 =w add %.32, 1
@@ -50,14 +50,14 @@ export function $print(l %.1, w %.2, l %.3) {
     jmp @while.cond.6
 @while.end.8
     %.34 =l loadl %_s
-    %.33 =w call extern $fprintf(l %.34, l $s11)
+    %.33 =w call extern $fprintf(l %.34, l $.s3)
     %.37 =w loadw %_j
     %.36 =w add %.37, 1
     storew %.36, %_j
     jmp @while.cond.3
 @while.end.5
     %.39 =l loadl %_s
-    %.38 =w call extern $fprintf(l %.39, l $s12)
+    %.38 =w call extern $fprintf(l %.39, l $.s4)
     ret
 }
 
@@ -400,16 +400,14 @@ export function w $main(w %.1, l %.2) {
     storew %.18, %_nSolutions
     %.24 =l loadl extern $__stdoutp
     %.26 =w loadw %_nSolutions
-    %.23 =w call extern $fprintf(l %.24, l $s17, ..., w %.26)
+    %.23 =w call extern $fprintf(l %.24, l $.s5, ..., w %.26)
     ret
 }
 
 
-# GLOBAL VARIABLES
-
 # STRING CONSTANTS
-data $s9 = { b " Q", b 0 }
-data $s10 = { b " .", b 0 }
-data $s11 = { b "\n", b 0 }
-data $s12 = { b "\n", b 0 }
-data $s17 = { b "found %d solutions\n", b 0 }
+data $.s1 = { b " Q", b 0 }
+data $.s2 = { b " .", b 0 }
+data $.s3 = { b "\n", b 0 }
+data $.s4 = { b "\n", b 0 }
+data $.s5 = { b "found %d solutions\n", b 0 }

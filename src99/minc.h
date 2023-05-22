@@ -16,6 +16,7 @@ enum {
     SYM_NAME_MAX = 32,
     TMP_START = 1,
     LBL_START = 1,
+    STR_START = 1,
 };
 
 
@@ -415,6 +416,7 @@ Buckets nodes;
 // label generation
 int tmp_seed = TMP_START;
 int lbl_seed = LBL_START;
+int next_str = STR_START;
 
 
 // i/o streams
@@ -623,6 +625,7 @@ void incLine() {isrcline++;}
 
 int reserve_lbl(int n) {int l = lbl_seed; lbl_seed += n; return l;}
 int reserve_tmp() {return tmp_seed++;}
+int reserve_str() {return next_str++;}
 int reserve_oglo() {return next_oglo++;}
 
 

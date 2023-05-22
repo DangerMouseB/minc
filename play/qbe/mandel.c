@@ -1,17 +1,11 @@
-void *malloc();
-void *SDL_CreateWindow();
-void *SDL_CreateRenderer();
-int SDL_SetRenderDrawColor();
-int SDL_RenderDrawPoint();
-int SDL_RenderClear();
-int SDL_RenderPresent();
-int SDL_PollEvent();
-int SDL_DestroyRenderer();
-int SDL_DestroyWindow();
-int SDL_Quit();
-int SDL_Init();
+// https://www.google.com/search?q=how+to+install+SDL+macos&sxsrf=APwXEddKJiENodQCTs9oedChir7TE_UDww%3A1684782531568&ei=w71rZIKvIquZhbIPi9WkuA8&ved=0ahUKEwjCnMWC0In_AhWrTEEAHYsqCfcQ4dUDCA8&uact=5&oq=how+to+install+SDL+macos&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIICAAQFhAeEA8yCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgM6BwgjELADECc6CggAEEcQ1gQQsAM6CggAEIoFELADEEM6CggAEIAEEBQQhwI6BQgAEIAEOgYIABAWEB46CggAEBYQHhAPEAo6CAgAEAgQHhANSgQIQRgAUK8DWOUVYN0XaAFwAXgAgAFPiAG9A5IBATaYAQCgAQHIAQrAAQE&sclient=gws-wiz-serp#kpvalbx=_zL1rZPOICJSZgQbo2ISYCA_34
+// https://libsdl.org/
 
-void *win;
+// cc -o mandel mandel.s -F/Library/Frameworks -framework SDL2   << to link
+
+#include <stdlib.h>
+#include <SDL2/SDL.h>
+
 void *rnd;
 int W;
 int H;
@@ -41,12 +35,12 @@ void plot(int x, int y) {
 
 int main() {
 	int c, n, x, y, *ie;
-	void *e;
+	void *e, *win;
 
 	W = 800;
 	H = 800;
 	SDL_Init(32);
-	win = SDL_CreateWindow("Mandelbrot MiniC", 0, 0, W, H, 0);
+	win = SDL_CreateWindow("Mandelbrot", 0, 0, W, H, 0);
 	rnd = SDL_CreateRenderer(win, -1, 0);
 	e = malloc(56);
 	ie = e;
@@ -64,7 +58,8 @@ int main() {
 			plot(x, y);
 	SDL_RenderPresent(rnd);
 
-	for (;;) {
+    while (1) {
+//	for (;;) { nyi
 		if (SDL_PollEvent(e)) {
 			if (ie[0] == 769)
 				break;

@@ -7,7 +7,7 @@
 // code gen constants - PVAR is the pointer to the memory that backs a C variable
 #define GLOBAL  "$"
 #define QEXTERN  "$"
-#define STRING  "$s"
+#define STRING  "$.s"
 #define TEMP    "%%."
 #define PVAR    "%%_"
 #define LABEL   "@"
@@ -148,7 +148,7 @@ void emitsymb(Symb s) {
             putq("%d", s.u.n);
             break;
         case Str:
-            putq(STRING "%d", s.u.n);
+            putq(STRING "%d", s.i);
             break;
         case Tmp:
             putq(TEMP "%d", s.u.n);
@@ -269,7 +269,7 @@ void emitboolop(Node *n, int tn, char *tlabel, int fn, char*flabel) {
 
 void emitbreak(Node *n, int b) {
     if (b < 0) die("break not in loop");
-    putq(QINDENT "jmp " LABEL "false.%d\n", b);
+    putq(QINDENT "jmp " LABEL "while.end.%d\n", b);
 }
 
 void emitret(Node *n) {
@@ -442,7 +442,7 @@ Symb emitexpr(Node *n) {
 
         case LIT_STR:
             sr.styp = Str;
-            sr.u.n = n->s.u.n;
+            sr.i = n->s.i;
             sr.btyp = B_CHAR_STAR;
             break;
 

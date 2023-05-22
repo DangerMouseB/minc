@@ -14,9 +14,9 @@ goals:
 - develop components for bones type system, bones vm and a Python in memory compiler (the most basic form of JIT)
 
 next:
-- make literal strings be named as _s1, _s2 etc
 - get knight.c working again
-- add intersections and api 
+- sort conversions and promote
+- add intersections and api
 - add nominals and move fully to bones types
 - add <:...> to lexer and output a TYPE
 - type-lang parser (use miniyacc)

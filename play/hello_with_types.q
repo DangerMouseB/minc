@@ -31,3 +31,7 @@ data $p2 = { l 0 }
 
 # STRING CONSTANTS
 data $.s1 = { b "hello %d%c", b 0 }
+
+# TYPE LANG
+export data $t_lf = { b "void^i8", b 0 }
+export data $t_main = { b "void^i32", b 0 }

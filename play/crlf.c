@@ -1,1 +1,0 @@
-char LF3() {return 10;}

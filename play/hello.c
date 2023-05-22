@@ -4,6 +4,8 @@
 FILE * f;
 int (*p) (void *, const char *, ...);
 
+char lf() {return 10;}
+
 int main() {
     int i;
     i = 1;
@@ -11,7 +13,7 @@ int main() {
     p = fprintf;
     f = stdout;
     p2 = p;
-    p2(f, "hello %d\n", i);
+    p2(f, "hello %d%c", i, lf());
 }
 
 // OPEN: to test

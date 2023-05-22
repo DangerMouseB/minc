@@ -12,7 +12,7 @@ double scalarProduct(double *rowA, double **B, int mA, int j) {
     return 0;
 }
 
- mmul(double **A, double **B, int nA, int mA, int mB, double **out) {
+double mmul(double **A, double **B, int nA, int mA, int mB, double **out) {
     // A and B are n x m
     int i;  int j;
     for (i=0; i < nA; i++) {
@@ -23,7 +23,7 @@ double scalarProduct(double *rowA, double **B, int mA, int j) {
     return 0;
 }
 
- mmul2(double **A, double **B, int nA, int mA, int mB, double **out) {
+double mmul2(double **A, double **B, int nA, int mA, int mB, double **out) {
     // A and B are n x m
     int i;  int j;  int k;  double *rowA;
     for (i=0; i < nA; i++) {

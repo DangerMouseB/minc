@@ -1,89 +1,92 @@
 export function w $main() {
-@Lstart.1
-@Lbody.2
-	%_n =l alloc4 4
-	%_nv =l alloc4 4
-	%_c =l alloc4 4
-	%_cmax =l alloc4 4
-	%_mem =l alloc8 8
-	%.3 =w mul 8, 4000
-	%.2 =l call $malloc(w %.3)
-	storel %.2, %_mem
-	storew 0, %_cmax
-	storew 1, %_nv
-@L3
-	%.11 =w loadw %_nv
-	%.10 =w csltw %.11, 1000
-	jnz %.10, @L4, @L5
-@L4
-	%.14 =w loadw %_nv
-	storew %.14, %_n
-	storew 0, %_c
-@L6
-	%.18 =w loadw %_n
-	%.17 =w cnew %.18, 1
-	jnz %.17, @L7, @L8
-@L7
-	%.21 =w loadw %_n
-	%.22 =w loadw %_nv
-	%.20 =w csltw %.21, %.22
-	jnz %.20, @L9, @L10
-@L9
-	%.25 =w loadw %_c
-	%.28 =l loadl %_mem
-	%.29 =w loadw %_n
-	%.30 =l extsw %.29
-	%.31 =l extuw %.30
-	%.32 =l mul 4, %.31
-	%.27 =l add %.28, %.32
-	%.26 =w loadw %.27
-	%.24 =w add %.25, %.26
-	storew %.24, %_c
-	jmp @L8
-@L10
-	%.34 =w loadw %_n
-	%.33 =w and %.34, 1
-	jnz %.33, @L11, @L12
-@L11
-	%.40 =w loadw %_n
-	%.38 =w mul 3, %.40
-	%.37 =w add %.38, 1
-	storew %.37, %_n
-	jmp @L13
-@L12
-	%.44 =w loadw %_n
-	%.43 =w div %.44, 2
-	storew %.43, %_n
-@L13
-	%.47 =w loadw %_c
-	%.46 =w add %.47, 1
-	storew %.46, %_c
-	jmp @L6
-@L8
-	%.49 =w loadw %_c
-	%.51 =l loadl %_mem
-	%.52 =w loadw %_nv
-	%.53 =l extsw %.52
-	%.54 =l extuw %.53
-	%.55 =l mul 4, %.54
-	%.50 =l add %.51, %.55
-	storew %.49, %.50
-	%.57 =w loadw %_cmax
-	%.58 =w loadw %_c
-	%.56 =w csltw %.57, %.58
-	jnz %.56, @L14, @L15
-@L14
-	%.60 =w loadw %_c
-	storew %.60, %_cmax
-@L15
-	%.62 =w loadw %_nv
-	%.61 =w add %.62, 1
-	storew %.61, %_nv
-	jmp @L3
-@L5
-	%.65 =w loadw %_cmax
-	%.63 =w call $printf(l $g7, ..., w %.65)
-	ret
+@start.1
+@body.2
+    %_n =l alloc4 4
+    %_nv =l alloc4 4
+    %_c =l alloc4 4
+    %_cmax =l alloc4 4
+    %_mem =l alloc8 8
+    %.3 =w mul 8, 4000
+    %.2 =l call extern $malloc(w %.3)
+    storel %.2, %_mem
+    storew 0, %_cmax
+    storew 1, %_nv
+@while.cond.3
+    %.11 =w loadw %_nv
+    %.10 =w csltw %.11, 1000
+    jnz %.10, @while.body.4, @while.end.5
+@while.body.4
+    %.14 =w loadw %_nv
+    storew %.14, %_n
+    storew 0, %_c
+@while.cond.6
+    %.18 =w loadw %_n
+    %.17 =w cnew %.18, 1
+    jnz %.17, @while.body.7, @while.end.8
+@while.body.7
+@if.9
+    %.21 =w loadw %_n
+    %.22 =w loadw %_nv
+    %.20 =w csltw %.21, %.22
+    jnz %.20, @true.10, @false.11
+@true.10
+    %.25 =w loadw %_c
+    %.28 =l loadl %_mem
+    %.29 =w loadw %_n
+    %.30 =l extsw %.29
+    %.31 =l mul 4, %.30
+    %.27 =l add %.28, %.31
+    %.26 =w loadw %.27
+    %.24 =w add %.25, %.26
+    storew %.24, %_c
+    jmp @false.8
+@false.11
+@if.else.12
+    %.33 =w loadw %_n
+    %.32 =w and %.33, 1
+    jnz %.32, @true.13, @false.14
+@true.13
+    %.39 =w loadw %_n
+    %.37 =w mul 3, %.39
+    %.36 =w add %.37, 1
+    storew %.36, %_n
+    jmp @if.end.15
+@false.14
+    %.43 =w loadw %_n
+    %.42 =w div %.43, 2
+    storew %.42, %_n
+@if.end.15
+    %.46 =w loadw %_c
+    %.45 =w add %.46, 1
+    storew %.45, %_c
+    jmp @while.cond.6
+@while.end.8
+    %.48 =w loadw %_c
+    %.50 =l loadl %_mem
+    %.51 =w loadw %_nv
+    %.52 =l extsw %.51
+    %.53 =l mul 4, %.52
+    %.49 =l add %.50, %.53
+    storew %.48, %.49
+@if.16
+    %.55 =w loadw %_cmax
+    %.56 =w loadw %_c
+    %.54 =w csltw %.55, %.56
+    jnz %.54, @true.17, @false.18
+@true.17
+    %.58 =w loadw %_c
+    storew %.58, %_cmax
+@false.18
+    %.60 =w loadw %_nv
+    %.59 =w add %.60, 1
+    storew %.59, %_nv
+    jmp @while.cond.3
+@while.end.5
+    %.63 =w loadw %_cmax
+    %.61 =w call extern $printf(l $.s1, ..., w %.63)
+    ret
 }
 
-data $g7 = { b "should print 178: %d\n", b 0 }
+
+# STRING CONSTANTS
+data $.s1 = { b "should print 178: %d\n", b 0 }

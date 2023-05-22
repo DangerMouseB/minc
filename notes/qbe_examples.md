@@ -4,18 +4,17 @@ Intention here is to provide clarifying examples for beginners.
 # Calling a function pointer and returning an unsigned char
 export function w $main() {
 @body.1
-    %.1 =l copy $printf
-	call %.1(l $str_hello)
-	%.lf =w call $LF()
-	call %.1(l $str_a_char, ..., ub %.lf)
+    %.1 =l add extern $printf, 0
+	call %.1(l $.s1)
+	%.lf =ub call $LF()
+	call %.1(l $.s2, ..., ub %.lf)
 	ret 0
 }
 
-data $str_hello = { b "hello", b 0 }
-data $str_a_char = { b "%c", b 0 }
+data $.s1 = { b "hello", b 0 }
+data $.s2 = { b "%c", b 0 }
 
-# replace w with ub once fix tested
-function w $LF() {
+function ub $LF() {
 @body.2
     ret 10
 }

@@ -33,23 +33,23 @@ export function $print(l %.1) {
     %.12 =w loadw %.13
     jnz %.12, @true.10, @false.11
 @true.10
-    %.23 =w call extern $printf(l $s11)
+    %.23 =w call extern $printf(l $.s1)
     jmp @if.end.12
 @false.11
-    %.25 =w call extern $printf(l $s12)
+    %.25 =w call extern $printf(l $.s2)
 @if.end.12
     %.28 =w loadw %_i
     %.27 =w add %.28, 1
     storew %.27, %_i
     jmp @while.cond.6
 @while.end.8
-    %.29 =w call extern $printf(l $s13)
+    %.29 =w call extern $printf(l $.s3)
     %.32 =w loadw %_j
     %.31 =w add %.32, 1
     storew %.31, %_j
     jmp @while.cond.3
 @while.end.5
-    %.33 =w call extern $printf(l $s14)
+    %.33 =w call extern $printf(l $.s4)
     ret
 }
 
@@ -369,10 +369,11 @@ export function w $main(w %.1, l %.2) {
     %.16 =w loadw $Q
     %.15 =l call $newBoard(w %.16)
     storel %.15, %_board
-    %.19 =l loadl %_board
-    call $go(w 0, l %.19)
-    %.22 =w loadw $nSolutions
-    %.20 =w call extern $printf(l $s19, ..., w %.22)
+    storew 0, $nSolutions
+    %.21 =l loadl %_board
+    call $go(w 0, l %.21)
+    %.24 =w loadw $nSolutions
+    %.22 =w call extern $printf(l $.s5, ..., w %.24)
     ret
 }
 
@@ -382,8 +383,8 @@ data $Q = { w 0 }
 data $nSolutions = { w 0 }
 
 # STRING CONSTANTS
-data $s11 = { b " Q", b 0 }
-data $s12 = { b " .", b 0 }
-data $s13 = { b "\n", b 0 }
-data $s14 = { b "\n", b 0 }
-data $s19 = { b "found %d solutions\n", b 0 }
+data $.s1 = { b " Q", b 0 }
+data $.s2 = { b " .", b 0 }
+data $.s3 = { b "\n", b 0 }
+data $.s4 = { b "\n", b 0 }
+data $.s5 = { b "found %d solutions\n", b 0 }
