@@ -3,42 +3,47 @@ export function w $board() {
 @body.2
     %_x =l alloc4 4
     %_y =l alloc4 4
+    %.2 =l loadl $t
+    call extern $time(l %.2)
+    %.6 =l loadl $t
+    %.5 =l call extern $ctime(l %.6)
+    %.3 =w call extern $printf(l $.s1, ..., l %.5)
     storew 0, %_y
 @while.cond.3
-    %.4 =w loadw %_y
-    %.3 =w csltw %.4, 8
-    jnz %.3, @while.body.4, @while.end.5
+    %.10 =w loadw %_y
+    %.9 =w csltw %.10, 8
+    jnz %.9, @while.body.4, @while.end.5
 @while.body.4
     storew 0, %_x
 @while.cond.6
-    %.9 =w loadw %_x
-    %.8 =w csltw %.9, 8
-    jnz %.8, @while.body.7, @while.end.8
+    %.15 =w loadw %_x
+    %.14 =w csltw %.15, 8
+    jnz %.14, @while.body.7, @while.end.8
 @while.body.7
-    %.17 =l loadl $b
-    %.18 =w loadw %_x
-    %.19 =l extsw %.18
-    %.20 =l mul 8, %.19
-    %.16 =l add %.17, %.20
-    %.15 =l loadl %.16
-    %.21 =w loadw %_y
-    %.22 =l extsw %.21
-    %.23 =l mul 4, %.22
-    %.14 =l add %.15, %.23
-    %.13 =w loadw %.14
-    %.11 =w call extern $printf(l $.s1, ..., w %.13)
-    %.25 =w loadw %_x
-    %.24 =w add %.25, 1
-    storew %.24, %_x
+    %.23 =l loadl $b
+    %.24 =w loadw %_x
+    %.25 =l extsw %.24
+    %.26 =l mul 8, %.25
+    %.22 =l add %.23, %.26
+    %.21 =l loadl %.22
+    %.27 =w loadw %_y
+    %.28 =l extsw %.27
+    %.29 =l mul 4, %.28
+    %.20 =l add %.21, %.29
+    %.19 =w loadw %.20
+    %.17 =w call extern $printf(l $.s2, ..., w %.19)
+    %.31 =w loadw %_x
+    %.30 =w add %.31, 1
+    storew %.30, %_x
     jmp @while.cond.6
 @while.end.8
-    %.26 =w call extern $printf(l $.s2)
-    %.29 =w loadw %_y
-    %.28 =w add %.29, 1
-    storew %.28, %_y
+    %.32 =w call extern $printf(l $.s3)
+    %.35 =w loadw %_y
+    %.34 =w add %.35, 1
+    storew %.34, %_y
     jmp @while.cond.3
 @while.end.5
-    %.30 =w call extern $printf(l $.s3)
+    %.36 =w call extern $printf(l $.s4)
     ret 0
 }
 
@@ -49,35 +54,51 @@ export function w $chk(w %.1, w %.2) {
     %_y =l alloc4 4
     storew %.2, %_y
 @body.10
+    %_no =l alloc4 4
+    storew 0, %_no
+    %.7 =w loadw %_no
+    %.9 =w loadw %_x
+    %.8 =w csltw %.9, 0
+    %.6 =w add %.7, %.8
+    storew %.6, %_no
+    %.13 =w loadw %_no
+    %.16 =w loadw %_x
+    %.14 =w csltw 7, %.16
+    %.12 =w add %.13, %.14
+    storew %.12, %_no
+    %.19 =w loadw %_no
+    %.21 =w loadw %_y
+    %.20 =w csltw %.21, 0
+    %.18 =w add %.19, %.20
+    storew %.18, %_no
+    %.25 =w loadw %_no
+    %.28 =w loadw %_y
+    %.26 =w csltw 7, %.28
+    %.24 =w add %.25, %.26
+    storew %.24, %_no
 @if.11
-    %.7 =w loadw %_x
-    %.6 =w csltw %.7, 0
-    %.11 =w loadw %_x
-    %.9 =w csltw 7, %.11
-    %.5 =w add %.6, %.9
-    %.13 =w loadw %_y
-    %.12 =w csltw %.13, 0
-    %.4 =w add %.5, %.12
-    %.17 =w loadw %_y
-    %.15 =w csltw 7, %.17
-    %.3 =w add %.4, %.15
-    jnz %.3, @true.12, @false.13
+    %.29 =w loadw %_no
+    jnz %.29, @true.12, @false.13
 @true.12
     ret 0
 @false.13
-    %.24 =l loadl $b
-    %.25 =w loadw %_x
-    %.26 =l extsw %.25
-    %.27 =l mul 8, %.26
-    %.23 =l add %.24, %.27
-    %.22 =l loadl %.23
-    %.28 =w loadw %_y
-    %.29 =l extsw %.28
-    %.30 =l mul 4, %.29
-    %.21 =l add %.22, %.30
-    %.20 =w loadw %.21
-    %.19 =w ceqw %.20, 0
-    ret %.19
+    %.33 =w loadw %_no
+    %.38 =l loadl $b
+    %.39 =w loadw %_x
+    %.40 =l extsw %.39
+    %.41 =l mul 8, %.40
+    %.37 =l add %.38, %.41
+    %.36 =l loadl %.37
+    %.42 =w loadw %_y
+    %.43 =l extsw %.42
+    %.44 =l mul 4, %.43
+    %.35 =l add %.36, %.44
+    %.34 =w loadw %.35
+    %.32 =w add %.33, %.34
+    storew %.32, %_no
+    %.46 =w loadw %_no
+    %.45 =w ceqw %.46, 0
+    ret %.45
 }
 
 export function w $go(w %.1, w %.2, w %.3) {
@@ -91,6 +112,9 @@ export function w $go(w %.1, w %.2, w %.3) {
 @body.15
     %_i =l alloc4 4
     %_j =l alloc4 4
+    %_no =l alloc4 4
+    %_x1 =l alloc4 4
+    %_y1 =l alloc4 4
     %.5 =w loadw %_k
     %.9 =l loadl $b
     %.10 =w loadw %_x
@@ -109,126 +133,136 @@ export function w $go(w %.1, w %.2, w %.3) {
     jnz %.16, @true.17, @false.18
 @true.17
 @if.20
-    %.22 =w loadw %_x
-    %.21 =w cnew %.22, 2
-    %.25 =w loadw %_y
-    %.24 =w cnew %.25, 0
-    %.20 =w add %.21, %.24
-    %.31 =w loadw %_x
-    %.30 =w sub %.31, 2
-    %.29 =w call extern $abs(w %.30)
-    %.34 =w loadw %_y
-    %.33 =w call extern $abs(w %.34)
-    %.28 =w add %.29, %.33
-    %.27 =w ceqw %.28, 3
-    %.19 =w add %.20, %.27
-    jnz %.19, @true.21, @false.22
+    %.20 =w loadw %_x
+    %.19 =w cnew %.20, 2
+    jnz %.19, @and.true.24, @false.22
+@and.true.24
+    %.23 =w loadw %_y
+    %.22 =w cnew %.23, 0
+    jnz %.22, @and.true.23, @false.22
+@and.true.23
+    %.29 =w loadw %_x
+    %.28 =w sub %.29, 2
+    %.27 =w call extern $abs(w %.28)
+    %.32 =w loadw %_y
+    %.31 =w call extern $abs(w %.32)
+    %.26 =w add %.27, %.31
+    %.25 =w ceqw %.26, 3
+    jnz %.25, @true.21, @false.22
 @true.21
-    %.36 =w call $board()
+    %.34 =w call $board()
+    %.36 =w loadw $N
+    %.35 =w add %.36, 1
+    storew %.35, $N
+@if.25
     %.38 =w loadw $N
-    %.37 =w add %.38, 1
-    storew %.37, $N
-@if.23
-    %.40 =w loadw $N
-    %.39 =w ceqw %.40, 10
-    jnz %.39, @true.24, @false.25
-@true.24
+    %.37 =w ceqw %.38, 10
+    jnz %.37, @true.26, @false.27
+@true.26
     call extern $exit(w 0)
-@false.25
+@false.27
 @false.22
     jmp @if.end.19
 @false.18
-    %.46 =w sub 0, 2
-    storew %.46, %_i
-@while.cond.26
-    %.50 =w loadw %_i
-    %.49 =w cslew %.50, 2
-    jnz %.49, @while.body.27, @while.end.28
-@while.body.27
-    %.54 =w sub 0, 2
-    storew %.54, %_j
-@while.cond.29
-    %.58 =w loadw %_j
-    %.57 =w cslew %.58, 2
-    jnz %.57, @while.body.30, @while.end.31
-@while.body.30
-@if.32
-    %.64 =w loadw %_i
-    %.63 =w call extern $abs(w %.64)
-    %.66 =w loadw %_j
-    %.65 =w call extern $abs(w %.66)
-    %.62 =w add %.63, %.65
-    %.61 =w ceqw %.62, 3
-    %.70 =w loadw %_x
-    %.71 =w loadw %_i
+    %.44 =w sub 0, 2
+    storew %.44, %_i
+@while.cond.28
+    %.48 =w loadw %_i
+    %.47 =w cslew %.48, 2
+    jnz %.47, @while.body.29, @while.end.30
+@while.body.29
+    %.52 =w sub 0, 2
+    storew %.52, %_j
+@while.cond.31
+    %.56 =w loadw %_j
+    %.55 =w cslew %.56, 2
+    jnz %.55, @while.body.32, @while.end.33
+@while.body.32
+@if.34
+    %.61 =w loadw %_i
+    %.60 =w call extern $abs(w %.61)
+    %.63 =w loadw %_j
+    %.62 =w call extern $abs(w %.63)
+    %.59 =w add %.60, %.62
+    %.58 =w ceqw %.59, 3
+    jnz %.58, @and.true.37, @false.36
+@and.true.37
+    %.67 =w loadw %_x
+    %.68 =w loadw %_i
+    %.66 =w add %.67, %.68
+    %.70 =w loadw %_y
+    %.71 =w loadw %_j
     %.69 =w add %.70, %.71
-    %.73 =w loadw %_y
-    %.74 =w loadw %_j
-    %.72 =w add %.73, %.74
-    %.68 =w call $chk(w %.69, w %.72)
-    %.60 =w add %.61, %.68
-    jnz %.60, @true.33, @false.34
-@true.33
-    %.77 =w loadw %_k
-    %.76 =w add %.77, 1
-    %.80 =w loadw %_x
-    %.81 =w loadw %_i
+    %.65 =w call $chk(w %.66, w %.69)
+    jnz %.65, @true.35, @false.36
+@true.35
+    %.74 =w loadw %_k
+    %.73 =w add %.74, 1
+    %.77 =w loadw %_x
+    %.78 =w loadw %_i
+    %.76 =w add %.77, %.78
+    %.80 =w loadw %_y
+    %.81 =w loadw %_j
     %.79 =w add %.80, %.81
-    %.83 =w loadw %_y
-    %.84 =w loadw %_j
-    %.82 =w add %.83, %.84
-    %.75 =w call $go(w %.76, w %.79, w %.82)
-@false.34
-    %.86 =w loadw %_j
-    %.85 =w add %.86, 1
-    storew %.85, %_j
-    jmp @while.cond.29
-@while.end.31
-    %.88 =w loadw %_i
-    %.87 =w add %.88, 1
-    storew %.87, %_i
-    jmp @while.cond.26
-@while.end.28
+    %.72 =w call $go(w %.73, w %.76, w %.79)
+@false.36
+    %.83 =w loadw %_j
+    %.82 =w add %.83, 1
+    storew %.82, %_j
+    jmp @while.cond.31
+@while.end.33
+    %.85 =w loadw %_i
+    %.84 =w add %.85, 1
+    storew %.84, %_i
+    jmp @while.cond.28
+@while.end.30
 @if.end.19
-    %.94 =l loadl $b
-    %.95 =w loadw %_x
+    %.91 =l loadl $b
+    %.92 =w loadw %_x
+    %.93 =l extsw %.92
+    %.94 =l mul 8, %.93
+    %.90 =l add %.91, %.94
+    %.89 =l loadl %.90
+    %.95 =w loadw %_y
     %.96 =l extsw %.95
-    %.97 =l mul 8, %.96
-    %.93 =l add %.94, %.97
-    %.92 =l loadl %.93
-    %.98 =w loadw %_y
-    %.99 =l extsw %.98
-    %.100 =l mul 4, %.99
-    %.91 =l add %.92, %.100
-    storew 0, %.91
+    %.97 =l mul 4, %.96
+    %.88 =l add %.89, %.97
+    storew 0, %.88
     ret 0
 }
 
 export function w $main() {
-@start.35
-@body.36
+@start.38
+@body.39
     %_i =l alloc4 4
-    %.2 =l call extern $calloc(w 8, w 8)
-    storel %.2, $b
-    storew 0, %_i
-@while.cond.37
-    %.8 =w loadw %_i
-    %.7 =w csltw %.8, 8
-    jnz %.7, @while.body.38, @while.end.39
-@while.body.38
+    %.2 =l call extern $malloc(w 8)
+    storel %.2, $t
+    %.5 =l loadl $t
+    call extern $time(l %.5)
+    %.9 =l loadl $t
+    %.8 =l call extern $ctime(l %.9)
+    %.6 =w call extern $printf(l $.s5, ..., l %.8)
     %.11 =l call extern $calloc(w 8, w 8)
-    %.15 =l loadl $b
-    %.16 =w loadw %_i
-    %.17 =l extsw %.16
-    %.18 =l mul 8, %.17
-    %.14 =l add %.15, %.18
-    storel %.11, %.14
-    %.20 =w loadw %_i
-    %.19 =w add %.20, 1
-    storew %.19, %_i
-    jmp @while.cond.37
-@while.end.39
-    %.21 =w call $go(w 1, w 2, w 0)
+    storel %.11, $b
+    storew 0, %_i
+@while.cond.40
+    %.17 =w loadw %_i
+    %.16 =w csltw %.17, 8
+    jnz %.16, @while.body.41, @while.end.42
+@while.body.41
+    %.20 =l call extern $calloc(w 8, w 8)
+    %.24 =l loadl $b
+    %.25 =w loadw %_i
+    %.26 =l extsw %.25
+    %.27 =l mul 8, %.26
+    %.23 =l add %.24, %.27
+    storel %.20, %.23
+    %.29 =w loadw %_i
+    %.28 =w add %.29, 1
+    storew %.28, %_i
+    jmp @while.cond.40
+@while.end.42
+    %.30 =w call $go(w 1, w 2, w 0)
     ret
 }
 
@@ -236,8 +270,11 @@ export function w $main() {
 # GLOBAL VARIABLES
 data $N = { w 0 }
 data $b = { l 0 }
+data $t = { l 0 }
 
 # STRING CONSTANTS
-data $.s1 = { b " %02d", b 0 }
-data $.s2 = { b "\n", b 0 }
+data $.s1 = { b "t: %s\n", b 0 }
+data $.s2 = { b " %02d", b 0 }
 data $.s3 = { b "\n", b 0 }
+data $.s4 = { b "\n", b 0 }
+data $.s5 = { b "t: %s\n", b 0 }

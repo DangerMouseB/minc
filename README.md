@@ -20,12 +20,21 @@ goals:
   - debugging
 
 next:
-- get knight.c working again
-- sort conversions and promote
+- sort extension and promotion
+- clean code gen
 - add intersections and api
 - add nominals and move fully to bones types
-- add <:...> to lexer and output a TYPE
+- add <: .... > to lexer and output a TYPE
 - type-lang parser (use miniyacc)
+- get ... working, e.g.
+  //void PP(char *msg, ...) {
+  //    va_list args;
+  //    va_start(args, msg);
+  //    vfprintf(stderr, msg, args);
+  //    fprintf(stderr, "\n");
+  //    va_end(args);
+  //}
+
 
 references: \
 https://c9x.me/compile/ \
@@ -44,6 +53,8 @@ https://github.com/ibara/yacc
 
 https://github.com/ShamithaUdupa/Simple-C-Compiler
 
-
 https://cdecl.org/
+
+
+
 
