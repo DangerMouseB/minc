@@ -1,7 +1,7 @@
 #ifndef AJ_BTYPE_H
 #define AJ_BTYPE_H "btype.h"
 
-#include "buckets.h"
+#include "buckets.c"
 
 
 // OPEN: add aliases so can do - typedef can automatically add aliased

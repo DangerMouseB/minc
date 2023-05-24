@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include "util.h"
 
-#include "buckets.h"
+#include "buckets.c"
 #include "btype.h"
 
 

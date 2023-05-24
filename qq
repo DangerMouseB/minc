@@ -32,8 +32,8 @@ fi
 
 file2="${file%.*}"
 $QBE < $file2.q > $file2.s &&
-cc $file2.s -o $file2 -lc
-#cc -c $file2.s -o $file2 -lc     # -c to compile an object fil
+cc -c $file2.s -o $file2.o        # -c compile only
+cc -o $file2 $file2.o -L$DIR/lib -lbuckets -lpp -lc
 #ar rcs libsally.a sally.o
 
 if test $? -ne 0

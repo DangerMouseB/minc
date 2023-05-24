@@ -1,5 +1,5 @@
-#ifndef AJ_BUCKETS_H
-#define AJ_BUCKETS_H
+#ifndef AJ_BUCKETS_C
+#define AJ_BUCKETS_C "aj/buckets.c"
 
 #include <stdlib.h>
 
@@ -172,6 +172,4 @@ int isDead(Buckets *a, void *p) {
     return 0;
 }
 
-
-
-#endif // AJ_BUCKETS_H
+#endif // AJ_BUCKETS_C

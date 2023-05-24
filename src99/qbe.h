@@ -243,26 +243,30 @@ void emitcall(Node *n, Symb *sr) {
     // OPEN: extend sub word return types?
 }
 
-void emitboolop(Node *n, int tn, char *tlabel, int fn, char*flabel) {
+void emitboolop(Node *n, char *tlabel, int tn, char*flabel, int fn) {
     Symb s;  int l;
     switch (n->tok) {
         default:
             s = emitexpr(n); /* OPEN: insert comparison to 0 with proper type */
             putq(QINDENT "jnz ");
             emitsymb(s);
-            putq(", " LABEL "%s.%d, " LABEL "%s.%d\n", tlabel, tn, flabel, fn);
+            putq(", " LABEL);
+            putq(tlabel, tn);
+            putq(", " LABEL);
+            putq(flabel, fn);
+            putq("\n");
             break;
         case OP_OR:
             l = reserve_lbl(1);
-            emitboolop(n->l, tn, tlabel, l, "or.false");
-            putq(LABEL "or.false.%d\n", l);
-            emitboolop(n->r, tn, tlabel, fn, flabel);
+            emitboolop(n->l, tlabel, tn, "or.%d.false", l);
+            putq(LABEL "or.%d.false\n", l);
+            emitboolop(n->r, tlabel, tn, flabel, fn);
             break;
         case OP_AND:
             l = reserve_lbl(1);
-            emitboolop(n->l, l, "and.true", fn, flabel);
-            putq(LABEL "and.true.%d\n", l);
-            emitboolop(n->r, tn, tlabel, fn, flabel);
+            emitboolop(n->l, "and.%d.true", l, flabel, fn);
+            putq(LABEL "and.%d.true\n", l);
+            emitboolop(n->r, tlabel, tn, flabel, fn);
             break;
     }
 }
@@ -285,38 +289,38 @@ void emitret(Node *n) {
 
 void emitif(Node *n, int b) {
     int l;
-    putq(LABEL "if.%d\n", reserve_lbl(1));
-    l = reserve_lbl(2);
-    emitboolop(n->l, l, "true", l+1, "false");
-    putq(LABEL "true.%d\n", l);
+    l = reserve_lbl(1);
+    putq(LABEL "if.%d\n", l);
+    emitboolop(n->l, "if.%d.true", l, "if.%d.end", l);
+    putq(LABEL "if.%d.true\n", l);
     emitstmt(n->r, b);
-    putq(LABEL "false.%d\n", l+1);
+    putq(LABEL "if.%d.end\n", l);
 }
 
 int emitifelse(Node *n, int b) {
     int l, r;  Node *e;
-    putq(LABEL "if.else.%d\n", reserve_lbl(1));
-    l = reserve_lbl(3);
-    emitboolop(n->l, l, "true", l+1, "false");
-    putq(LABEL "true.%d\n", l);
+    l = reserve_lbl(1);
+    putq(LABEL "if.%d\n", l);
+    emitboolop(n->l, "if.%d.true", l, "if.%d.false", l);
+    putq(LABEL "if.%d.true\n", l);
     e = n->r;
     if (!(r=emitstmt(e->l, b)))
-        putq(QINDENT "jmp " LABEL "if.end.%d\n", l+2);
-    putq(LABEL "false.%d\n", l+1);
+        putq(QINDENT "jmp " LABEL "if.%d.end\n", l);
+    putq(LABEL "if.%d.false\n", l);
     if (!(r &= emitstmt(e->r, b)))
-        putq(LABEL "if.end.%d\n", l+2);
+        putq(LABEL "if.%d.end\n", l);
     return e->r && r;
 }
 
 void emitwhile(Node *n) {
     int l;
-    l = reserve_lbl(3);
-    putq(LABEL "while.cond.%d\n", l);
-    emitboolop(n->l, l+1, "while.body", l+2, "while.end");
-    putq(LABEL "while.body.%d\n", l+1);
-    if (!emitstmt(n->r, l+2))
-        putq(QINDENT "jmp " LABEL "while.cond.%d\n", l);
-    putq(LABEL "while.end.%d\n", l+2);
+    l = reserve_lbl(1);
+    putq(LABEL "while.%d.cond\n", l);
+    emitboolop(n->l, "while.%d.body", l, "while.%d.end", l);
+    putq(LABEL "while.%d.body\n", l);
+    if (!emitstmt(n->r, 1))
+        putq(QINDENT "jmp " LABEL "while.%d.cond\n", l);
+    putq(LABEL "while.%d.end\n", l);
 }
 
 void emitfunc(enum btyp tRet, char *fnname, NameType *params, Node *stmts) {
@@ -400,16 +404,16 @@ Symb emitexpr(Node *n) {
         case OP_OR:
         case OP_AND:
             l = reserve_lbl(3);
-            emitboolop(n, l, "bool.true", l+1, "bool.false");
-            putq(LABEL "bool.true.%d\n", l);
-            putq(QINDENT "jmp " LABEL "bool.end.%d\n", l+2);
-            putq(LABEL "bool.false.%d\n", l+1);
-            putq(QINDENT "jmp " LABEL "bool.end.%d\n", l+2);
-            putq(LABEL "bool.end.%d\n", l+2);
+            emitboolop(n, "bool.%d.true", l, "bool.%d.false", l);
+            putq(LABEL "bool.%d.true\n", l);
+            putq(QINDENT "jmp " LABEL "bool.%d.end\n", l);
+            putq(LABEL "bool.%d.false\n", l);
+            putq(QINDENT "jmp " LABEL "bool.%d.end\n", l);
+            putq(LABEL "bool.%d.end\n", l);
             putq(QINDENT);
             sr.btyp = B_I32;
             emitsymb(sr);
-            putq(" =w phi " LABEL "bool.true.%d 1, " LABEL "bool.false.%d 0\n", l, l+1);
+            putq(" =w phi " LABEL "bool.%d.true 1, " LABEL "bool.%d.false 0\n", l, l);
             break;
 
         case IDENT:

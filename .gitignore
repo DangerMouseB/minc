@@ -12,6 +12,7 @@ binary_play.dSYM/
 .DS_Store
 
 y.*
+*.a
 *.o
 *.p
 *.s
@@ -52,3 +53,5 @@ play/qbe/knight_O2
 play/qbe/knight_O3
 
 play/play
+
+knight2
