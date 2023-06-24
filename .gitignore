@@ -37,21 +37,12 @@ play/tmp.q
 binary_play
 
 play/hello_pcc
-
 play/hello_pcc.*
-
 play/qbe/queen5
-
 play/qbe/mandel
-
 play/qbe/knight_cc
-
 play/qbe/knight_O1
-
 play/qbe/knight_O2
-
 play/qbe/knight_O3
-
 play/play
-
 knight2

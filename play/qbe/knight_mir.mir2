@@ -1,0 +1,216 @@
+M0:	module
+proto0:	proto	u64:U0_t
+proto1:	proto	i32, u64:U0_format, ...
+proto2:	proto	u64, u64:U0_timer
+proto3:	proto	i32, i32:i0_x
+proto4:	proto	i32, ...
+proto5:	proto	i32:i0_status
+proto6:	proto	i32, i32:i0_x, i32:i0_y
+proto7:	proto	i32, i32:i0_k, i32:i0_x, i32:i0_y
+proto8:	proto	u64, u64:U0_size
+proto9:	proto	u64, u64:U0_nitems, u64:U0_size
+	import	calloc
+	import	malloc
+	import	abs
+	import	exit
+	import	printf
+	import	time
+	import	ctime
+	export	N
+N:	i32	0
+	export	b
+b:	bss	8
+	export	t
+t:	bss	8
+board:	func	i32
+	local	i64:I_0, i64:i_1, i64:U_2, i64:I_3, i64:i0_y, i64:i_4, i64:i0_x, i64:i_5
+	local	i64:i_6, i64:I_7, i64:I_8, i64:I_9, i64:I_10, i64:I_11, i64:i_12, i64:i_13
+	local	i64:i_14, i64:i_15, i64:i_16, i64:i_17
+
+# 0 args, 20 locals, 0 globals
+	mov	I_0, t
+	call	proto0, time, u64:(I_0):pv
+	mov	I_3, t
+	call	proto2, ctime, U_2, u64:(I_3):pv
+	call	proto1, printf, i_1, "t: %s\n\000", U_2
+	mov	i0_y, 0
+	bges	L3, i0_y, 8
+L1:
+	mov	i0_x, 0
+	bges	L6, i0_x, 8
+L4:
+	mov	I_7, b
+	ext32	I_8, i0_x
+	mov	I_9, u64:(I_7):ppi
+	ext32	I_10, i0_y
+	mov	I_11, u64:(I_9, I_8, 8):pi
+	call	proto1, printf, i_6, " %02d\000", i32:(I_11, I_10, 4):i
+L5:
+	mov	i_12, i0_x
+	adds	i_12, i_12, 1
+	mov	i0_x, i_12
+	blts	L4, i0_x, 8
+L6:
+	call	proto1, printf, i_14, "\n\000"
+L2:
+	mov	i_15, i0_y
+	adds	i_15, i_15, 1
+	mov	i0_y, i_15
+	blts	L1, i0_y, 8
+L3:
+	call	proto1, printf, i_17, "\n\000"
+	ret	0
+	endfunc
+	export	board
+chk:	func	i32, i32:i0_x, i32:i0_y
+	local	i64:i_0, i64:i_1, i64:i_2, i64:i_3, i64:I_4, i64:I_5, i64:I_6, i64:I_7
+	local	i64:I_8, i64:i_9
+
+# 2 args, 10 locals, 0 globals
+	blts	L7, i0_x, 0
+L12:
+	bgts	L7, i0_x, 7
+L11:
+	blts	L7, i0_y, 0
+L10:
+	bles	L8, i0_y, 7
+L7:
+	ret	0
+	jmp	L9
+L8:
+L9:
+	mov	I_4, b
+	ext32	I_5, i0_x
+	mov	I_6, u64:(I_4):ppi
+	ext32	I_7, i0_y
+	mov	I_8, u64:(I_6, I_5, 8):pi
+	eqs	i_9, i32:(I_8, I_7, 4):i, 0
+	ret	i_9
+	endfunc
+	export	chk
+go:	func	i32, i32:i0_k, i32:i0_x, i32:i0_y
+	local	i64:I_0, i64:I_1, i64:I_2, i64:I_3, i64:I_4, i64:i_5, i64:i_6, i64:i_7
+	local	i64:i_8, i64:i_9, i64:i_10, i64:i_11, i64:i_12, i64:i_13, i64:I_14, i64:i_15
+	local	i64:I_16, i64:i_17, i64:i0_i, i64:i_18, i64:i0_j, i64:i_19, i64:i_20, i64:i_21
+	local	i64:i_22, i64:i_23, i64:i_24, i64:i_25, i64:i_26, i64:I_27, i64:i_28, i64:i_29
+	local	i64:i_30, i64:i_31, i64:i_32, i64:i_33, i64:i_34, i64:i_35, i64:I_36, i64:I_37
+	local	i64:I_38, i64:I_39, i64:I_40
+
+# 3 args, 43 locals, 0 globals
+	mov	I_0, b
+	ext32	I_1, i0_x
+	mov	I_2, u64:(I_0):ppi
+	ext32	I_3, i0_y
+	mov	I_4, u64:(I_2, I_1, 8):pi
+	mov	i32:(I_4, I_3, 4):i, i0_k
+	bnes	L14, i0_k, 64
+L13:
+	beqs	L17, i0_x, 2
+L20:
+	beqs	L17, i0_y, 0
+L19:
+	subs	i_9, i0_x, 2
+	call	proto3, abs, i_8, i_9
+	call	proto3, abs, i_10, i0_y
+	adds	i_11, i_8, i_10
+	bnes	L17, i_11, 3
+L16:
+	call	proto4, board, i_13
+	mov	I_14, N
+	mov	i_15, i32:(I_14):i
+	adds	i_15, i_15, 1
+	mov	i32:(I_14):i, i_15
+	mov	I_16, N
+	bnes	L22, i32:(I_16):i, 1
+L21:
+	call	proto5, exit, 0
+	jmp	L23
+L22:
+L23:
+	jmp	L18
+L17:
+L18:
+	jmp	L15
+L14:
+	mov	i0_i, -2
+	bgts	L26, i0_i, 2
+L24:
+	mov	i0_j, -2
+	bgts	L29, i0_j, 2
+L27:
+	call	proto3, abs, i_20, i0_i
+	call	proto3, abs, i_21, i0_j
+	adds	i_22, i_20, i_21
+	bnes	L31, i_22, 3
+L33:
+	adds	i_25, i0_x, i0_i
+	adds	i_26, i0_y, i0_j
+	call	proto6, chk, i_24, i_25, i_26
+	ext32	I_27, i_24
+	bf	L31, I_27
+L30:
+	adds	i_29, i0_k, 1
+	adds	i_30, i0_x, i0_i
+	adds	i_31, i0_y, i0_j
+	call	proto7, go, i_28, i_29, i_30, i_31
+	jmp	L32
+L31:
+L32:
+L28:
+	mov	i_32, i0_j
+	adds	i_32, i_32, 1
+	mov	i0_j, i_32
+	bles	L27, i0_j, 2
+L29:
+L25:
+	mov	i_34, i0_i
+	adds	i_34, i_34, 1
+	mov	i0_i, i_34
+	bles	L24, i0_i, 2
+L26:
+L15:
+	mov	I_36, b
+	ext32	I_37, i0_x
+	mov	I_38, u64:(I_36):ppi
+	ext32	I_39, i0_y
+	mov	I_40, u64:(I_38, I_37, 8):pi
+	mov	i32:(I_40, I_39, 4):i, 0
+	ret	0
+	endfunc
+	export	go
+main:	func	i32
+	local	i64:I_0, i64:U_1, i64:I_2, i64:i_3, i64:U_4, i64:I_5, i64:I_6, i64:U_7
+	local	i64:i0_i, i64:i_8, i64:I_9, i64:I_10, i64:I_11, i64:U_12, i64:i_13, i64:i_14
+	local	i64:i_15
+
+# 0 args, 17 locals, 0 globals
+	mov	I_0, t
+	call	proto8, malloc, U_1, 8
+	mov	u64:(I_0):pv, U_1
+	mov	I_2, t
+	call	proto0, time, u64:(I_2):pv
+	mov	I_5, t
+	call	proto2, ctime, U_4, u64:(I_5):pv
+	call	proto1, printf, i_3, "t: %s\n\000", U_4
+	mov	I_6, b
+	call	proto9, calloc, U_7, 8, 8
+	mov	u64:(I_6):ppi, U_7
+	mov	i0_i, 0
+	bges	L36, i0_i, 8
+L34:
+	mov	I_9, b
+	ext32	I_10, i0_i
+	mov	I_11, u64:(I_9):ppi
+	call	proto9, calloc, U_12, 8, 4
+	mov	u64:(I_11, I_10, 8):pi, U_12
+L35:
+	mov	i_13, i0_i
+	adds	i_13, i_13, 1
+	mov	i0_i, i_13
+	blts	L34, i0_i, 8
+L36:
+	call	proto7, go, i_15, 1, 2, 0
+	ret	0
+	endfunc
+	export	main
+	endmodule

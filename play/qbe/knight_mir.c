@@ -1,6 +1,23 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
+extern int atoi(const char*);
+extern void *calloc(unsigned long nitems, unsigned long size);
+extern void *malloc(unsigned long size);
+extern int abs(int x);
+extern void exit(int status);
+
+extern int printf(const char *format, ...);
+// https://stackoverflow.com/questions/73751533/how-can-i-get-a-reference-to-standard-input-from-assembly-on-a-mac
+
+#define FILE void
+#define stdout __stdoutp
+extern FILE * __stdoutp;
+extern int fprintf(FILE *stream, const char *format, ...);
+
+
+#define time_t void
+#define SIZEOF_TIME_T 8
+extern time_t time(time_t *t);
+extern char *ctime(time_t *timer);
+
 
 int N = 0;
 int **b;
@@ -25,13 +42,13 @@ int chk(int x, int y) {
 }
 
 int go(int k, int x, int y) {
-	int i, j;
+	int i, j, no, x1, y1;
 	b[x][y] = k;
 	if (k == 64) {
 		if (x!=2 && y!=0 && (abs(x-2) + abs(y) == 3)) {
 			board();
 			N++;
-			if (N==10) exit(0);
+			if (N==1) exit(0);
 		}
 	}
     else {
@@ -54,5 +71,5 @@ int main() {
 	for (i=0; i<8; i++)
 		b[i] = calloc(8, sizeof (int));
 	go(1, 2, 0);
-    // never gets this far - exit is called in go after a certain number of solutions being found
+    // never gets this far
 }

@@ -336,7 +336,7 @@ static char *toktopp[] = {
 typedef struct Node Node;
 typedef struct Symb Symb;
 
-struct Symb {
+struct Symb {               // 20
     enum {                  // 4
         Con = 1,            // constant - integer or double with type btyp
         Str = 2,            // literal string
@@ -346,14 +346,13 @@ struct Symb {
         Ext = 6,            // external variable or function, with type btyp, named
         Fn  = 7,            // function, with type btyp - either a forward declare or definition
     } styp;
-    int i;                  // 4 - styp defined - e.g. string number, iEllipsis
     enum btyp btyp;         // 4 (upto ***<type>)
     union {                 // 8
-        int n;              // integer constant
+        long n;             // styp defined - integer constant, temp variable ordinal
         char *v;            // string constant, name of fn or variable (and in short term structs, unions, typedefs etc) OPEN: change v to name
-//        Node *pn;           // pointer to a node
         double d;           // double constant
     } u;
+    int i;                  // 4 - styp defined - global string number, iEllipsis
 };
 
 
@@ -366,15 +365,11 @@ struct NameType {
 
 
 // see https://peps.python.org/pep-3123/
-//struct TV {
-//    enum tok tok;
-//};
 
-struct Node {               // 40 bytes
-//    struct TV t;            // 4
+struct Node {               // 44 bytes
     enum tok tok;           // 4
     unsigned int lineno;    // 4
-    struct Symb s;          // 4 + 4 + 8
+    struct Symb s;          // 20
     struct Node *l, *r;     // 8 + 8
 };
 

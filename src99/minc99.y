@@ -181,140 +181,6 @@ Node * mkinitdeclarator(Node *declarator, Node *initializer, int lineno) {
 
 
 
-// QBE IR emission
-
-Symb emitexpr(Node *);
-
-enum btyp prom(enum tok tok, Symb *l, Symb *r) {
-    Symb *t;  int sz;
-
-    if ((KIND(l->btyp) != B_PTR) && (KIND(r->btyp) != B_PTR)) {
-        if (l->btyp == r->btyp) return l->btyp;
-
-        if (l->btyp == B_I64) {
-            switch (r->btyp) {
-                case B_I8:
-                    *r = i8_to_i64(*r);
-                    break;
-                case B_I16:
-                    *r = i16_to_i64(*r);
-                    break;
-                case B_I32:
-                    *r = i32_to_i64(*r);
-                    break;
-            }
-            return B_I64;
-        }
-
-        if (r->btyp == B_I64) {
-            switch (l->btyp) {
-                case B_I8:
-                    *l = i8_to_i64(*l);
-                    break;
-                case B_I16:
-                    *l = i16_to_i64(*l);
-                    break;
-                case B_I32:
-                    *l = i32_to_i64(*l);
-                    break;
-            }
-            return B_I64;
-        }
-
-        if (l->btyp == B_I32) {
-            switch (r->btyp) {
-                case B_I8:
-                    *r = i8_to_i32(*r);
-                    break;
-                case B_I16:
-                    *r = i16_to_i32(*r);
-                    break;
-            }
-            return B_I32;
-        }
-
-        if (r->btyp == B_I32) {
-            switch (l->btyp) {
-                case B_I8:
-                    *l = i8_to_i32(*l);
-                    break;
-                case B_I16:
-                    *l = i16_to_i32(*l);
-                    break;
-            }
-            return B_I32;
-        }
-
-        if (l->btyp == B_F64 && r->btyp == B_I32) {
-            *r = i32_to_f64(*r);
-            return B_F64;
-        }
-
-        if (l->btyp == B_F64 && r->btyp == B_I64) {
-            *r = i64_to_f64(*r);
-            return B_F64;
-        }
-
-        nyi("oh dear");
-    }
-
-    if (tok == OP_ADD) {
-        // OPEN: handle double
-        if (KIND(r->btyp) == B_PTR) {
-            t = l;
-            l = r;
-            r = t;
-        }
-        if (KIND(r->btyp) == B_PTR) die("pointers added");
-        goto Scale;
-    }
-
-    if (tok == OP_SUB) {
-        // OPEN: handle double
-        if (KIND(l->btyp) != B_PTR)
-            die("pointer substracted from integer");
-        if (KIND(r->btyp) != B_PTR) goto Scale;
-        if (l->btyp != r->btyp) die("non-homogeneous pointers in substraction");
-        return B_I64;
-    }
-
-Scale:
-    // OPEN: handle double
-    sz = SIZE(DREF(l->btyp));
-    if (r->styp == Con)
-        r->u.n *= sz;
-    else {
-        switch (r->btyp) {
-            case B_I8:
-                *r = i8_to_i64(*r);
-                break;
-            case B_U8:
-                *r = u8_to_u64(*r);
-                break;
-            case B_I16:
-                *r = i16_to_i64(*r);
-                break;
-            case B_U16:
-                *r = u16_to_u64(*r);
-                break;
-            case B_I32:
-                *r = i32_to_i64(*r);
-                break;
-            case B_U32:
-                *r = u32_to_u64(*r);
-                break;
-            default:
-                break;
-        }
-        putq(QINDENT TEMP "%d =l mul %d, ", tmp_seed, sz);
-        emitsymb(*r);
-        putq("\n");
-        r->u.n = reserve_tmp();
-    }
-    return l->btyp;
-}
-
-
 // ---------------------------------------------------------------------------------------------------------------------
 // PARSE TREE HELPERS
 // ---------------------------------------------------------------------------------------------------------------------
@@ -812,7 +678,7 @@ exclusive_or_expression
 
 inclusive_or_expression
 : exclusive_or_expression                               { $$ = $1; }
-| inclusive_or_expression '|' exclusive_or_expression   { $$ = node(OP_ADD, $1, $3, $%); }
+| inclusive_or_expression '|' exclusive_or_expression   { $$ = node(OP_BOR, $1, $3, $%); }
 ;
 
 logical_and_expression
