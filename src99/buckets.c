@@ -2,6 +2,7 @@
 #define AJ_BUCKETS_C "aj/buckets.c"
 
 #include <stdlib.h>
+#include "dm/pp.h"
 
 void nyi(char *msg, ...);
 

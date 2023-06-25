@@ -1,6 +1,3 @@
-#ifndef AJ_PP_C
-#define AJ_PP_C "aj/pp.h"
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +32,3 @@ void bug(char *msg, ...) {
     die_("bug: ", msg, args);
     va_end(args);
 }
-
-
-#endif // AJ_PP_C

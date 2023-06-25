@@ -1,39 +1,30 @@
 #ifndef AJ_BUCKETS_H
 #define AJ_BUCKETS_H "aj/buckets.h"
 
-#define SIZEOF_BUCKETS 42
-#define Buckets void
+struct Buckets {
+    void *first_bucket;     // 8
+    void *current_bucket;   // 8
+    void *next;             // 8
+    void *eoc;              // 8
+    void *last_alloc;       // 8
+    unsigned short nPages;  // 2
+};
 
-//struct Buckets {
-//    void *first_bucket;     // 8
-//    void *current_bucket;   // 8
-//    void *next;             // 8
-//    void *eoc;              // 8
-//    void *last_alloc;       // 8
-//    unsigned short nPages;  // 2
-//};
+struct BucketsCheckpoint {
+    void *current_bucket;   // 8
+    void *next;             // 8
+    void *eoc;              // 8
+    void *last_alloc;       // 8
+};
 
-#define SIZEOF_BUCKETS_CHECKPOINTY 32
-#define BucketsCheckpoint void
+struct BucketHeader {
+    void *next_chunk;       // 8
+    void *eoc;              // 8
+};
 
-//struct BucketsCheckpoint {
-//    void *current_bucket;   // 8
-//    void *next;             // 8
-//    void *eoc;              // 8
-//    void *last_alloc;       // 8
-//};
-
-#define SIZEOF_BUCKET_HEADER 16
-#define BucketHeader void
-
-//struct BucketHeader {
-//    void *next_chunk;       // 8
-//    void *eoc;              // 8
-//};
-
-//typedef struct Buckets Buckets;
-//typedef struct BucketsCheckpoint BucketsCheckpoint;
-//typedef struct BucketHeader BucketHeader;
+typedef struct Buckets Buckets;
+typedef struct BucketsCheckpoint BucketsCheckpoint;
+typedef struct BucketHeader BucketHeader;
 
 void * initBuckets(Buckets *a, unsigned long chunkSize);
 void * allocInBuckets(Buckets *a, unsigned int n, unsigned int align);

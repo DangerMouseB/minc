@@ -1,9 +1,7 @@
-//#include "Python.h"
-//#include "structmember.h"       // https://github.com/python/cpython/blob/main/Include/structmember.h
-#include "buckets.c"
 #include <stdalign.h>
 #include <stdarg.h>
-
+#include "aj/buckets.h"
+#include "dm/pp.h"
 
 // for loop
 // while loop
@@ -45,7 +43,7 @@ enum rstop {
     rst_func = _t+4,
     rst_bindto = _t+5,
     rst_get = _t+6,
-    rst_bindtofn = _t+7,        // can we infer this from the type?
+    rst_bindfnto = _t+7,        // can we infer this from the type?
     rst_getoverload = _t+8,
     rst_getfamily = _t+9,
     rst_ret = _t+10,
@@ -137,13 +135,13 @@ typedef struct {
 
 // scope creation
 
-bscope* mklocalscope(Buckets* buckets) {
-    bscope* answer = allocInBuckets(buckets, sizeof(bscope), alignof(bscope));
+bscope* mklocalscope(Buckets *buckets) {
+    bscope *answer = allocInBuckets(buckets, sizeof(bscope), alignof(bscope));
     answer->scope = local;
     return answer;
 }
 
-bscope* mkfnscope(Buckets* buckets) {
+bscope* mkfnscope(Buckets *buckets) {
     bscope* answer = allocInBuckets(buckets, sizeof(bscope), alignof(bscope));
     answer->scope = fn;
     return answer;
@@ -218,6 +216,34 @@ rst* mklitint(Buckets* buckets, long x) {
     return (rst*) answer;
 }
 
+
+
+int emitqbe(rst *n) {
+    // returns 0 if no return statement
+    switch (n->op) {
+        case rst_seq:
+        case rst_apply:
+        case rst_block:
+        case rst_func:
+        case rst_bindto:
+        case rst_get:
+        case rst_bindfnto:
+        case rst_getoverload:
+        case rst_getfamily:
+        case rst_ret:
+        case rst_signal:
+        case rst_cast:
+        default:
+            nyi("default");
+    return 0;
+}
+
+//Symb emitexpr(Node *n) {
+//    Symb sr, s0, s1, st;  enum tok o;  int l;  char ty[2];
+//
+//    sr.styp = Tmp;
+//    sr.u.n = reserve_tmp();
+//    sr.btyp = 0;
 
 
 

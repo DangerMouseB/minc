@@ -4,7 +4,7 @@ yacc
 _qbe
 
 yacc.dSYM/
-_minc.dSYM/
+*.dSYM/
 _minc99.dSYM/
 test_arena.dSYM/
 binary_play.dSYM/

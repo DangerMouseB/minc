@@ -26,6 +26,8 @@ int main(int argc, char*argv[]) {
     Buckets a;
     rst *n1, *n2, *n3, *n4, *n5, *n6, *n7, *n8, *n9, *n10, *n11, *n12; bscope *locals; bscope *fns;
 
+    initBuckets(&a, 4096);
+
     locals = mklocalscope(&a);
     fns = mkfnscope(&a);
 
@@ -83,6 +85,7 @@ int main(int argc, char*argv[]) {
 
     n11 = mkseq(&a, n8, n10);
 
+    emitqbe(n11);
 
     // next - QBE emission
 
