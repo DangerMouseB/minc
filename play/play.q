@@ -1,18 +1,12 @@
 export function w $main() {
 @start.1
 @body.2
-@if.3
-    jnz 1, @if.3.true, @or.5.false
-@or.5.false
-    jnz 0, @if.3.true, @or.4.false
-@or.4.false
-    jnz 3, @if.3.true, @if.3.end
-@if.3.true
-    %.4 =w call extern $printf(l $.s1)
-@if.3.end
-    ret
+    %_a =l alloc4 4
+    storew 1, %_a
+    %.5 =w loadw %_a
+    %.4 =w add %.5, 1
+    storew %.4, %_a
+    %.7 =w loadw %_a
+    ret %.7
 }
 
-
-# STRING CONSTANTS
-data $.s1 = { b "true\n", b 0 }
