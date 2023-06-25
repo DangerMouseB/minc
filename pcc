@@ -6,8 +6,8 @@ PCC=$DIR/../cproc/cproc-qbe
 usage()
 {
   echo $flags
-	echo "usage: mcc [cc flags] file.c" >&2
-	exit 1
+  echo "usage: mcc [cc flags] file.c" >&2
+  exit 1
 }
 
 for i
@@ -18,7 +18,7 @@ done
 
 if test -z $file
 then
-	usage
+  usage
 fi
 
 file2="${file%.*}"
@@ -27,6 +27,6 @@ $PCC < $file2.p > $file2.q
 
 if test $? -ne 0
 then
-#	echo "error processing file $file" >&2
-	exit 1
+# echo "error processing file $file" >&2
+  exit 1
 fi

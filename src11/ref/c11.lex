@@ -17,12 +17,12 @@ jutta@pobox.com, 2012
 Last edit: 2012-12-19 DAGwyn@aol.com
 
 Note: The following %-parameters are the minimum sizes needed for real Lex.
-%e	number of parsed tree nodes
-%p	number of positions
-%n	number of states
-%k	number of packed character classes
-%a	number of transitions
-%o	size of output array
+%e  number of parsed tree nodes
+%p  number of positions
+%n  number of states
+%k  number of packed character classes
+%a  number of transitions
+%o  size of output array
 
 
 
@@ -65,43 +65,43 @@ static int check_type(void);
 %}
 
 %%
-"/*"                                    { comment(); }
-"//".*                                    { /* consume //-comment */ }
+"/*"                { comment(); }
+"//".*              { /* consume //-comment */ }
 
-"auto"					{ return(AUTO); }
-"break"					{ return(BREAK); }
-"case"					{ return(CASE); }
-"char"					{ return(CHAR); }
-"const"					{ return(CONST); }
-"continue"				{ return(CONTINUE); }
-"default"				{ return(DEFAULT); }
-"do"					{ return(DO); }
-"double"				{ return(DOUBLE); }
-"else"					{ return(ELSE); }
-"enum"					{ return(ENUM); }
-"extern"				{ return(EXTERN); }
-"float"					{ return(FLOAT); }
-"for"					{ return(FOR); }
-"goto"					{ return(GOTO); }
-"if"					{ return(IF); }
-"inline"				{ return(INLINE); }
-"int"					{ return(INT); }
-"long"					{ return(LONG); }
-"register"				{ return(REGISTER); }
-"restrict"				{ return(RESTRICT); }
-"return"				{ return(RETURN); }
-"short"					{ return(SHORT); }
-"signed"				{ return(SIGNED); }
-"sizeof"				{ return(SIZEOF); }
-"static"				{ return(STATIC); }
-"struct"				{ return(STRUCT); }
-"switch"				{ return(SWITCH); }
-"typedef"				{ return(TYPEDEF); }
-"union"					{ return(UNION); }
-"unsigned"				{ return(UNSIGNED); }
-"void"					{ return(VOID); }
-"volatile"				{ return(VOLATILE); }
-"while"					{ return(WHILE); }
+"auto"              { return(AUTO); }
+"break"             { return(BREAK); }
+"case"              { return(CASE); }
+"char"              { return(CHAR); }
+"const"             { return(CONST); }
+"continue"          { return(CONTINUE); }
+"default"           { return(DEFAULT); }
+"do"                { return(DO); }
+"double"            { return(DOUBLE); }
+"else"              { return(ELSE); }
+"enum"              { return(ENUM); }
+"extern"            { return(EXTERN); }
+"float"             { return(FLOAT); }
+"for"               { return(FOR); }
+"goto"              { return(GOTO); }
+"if"                { return(IF); }
+"inline"            { return(INLINE); }
+"int"               { return(INT); }
+"long"              { return(LONG); }
+"register"          { return(REGISTER); }
+"restrict"          { return(RESTRICT); }
+"return"            { return(RETURN); }
+"short"             { return(SHORT); }
+"signed"            { return(SIGNED); }
+"sizeof"            { return(SIZEOF); }
+"static"                { return(STATIC); }
+"struct"                { return(STRUCT); }
+"switch"                { return(SWITCH); }
+"typedef"                { return(TYPEDEF); }
+"union"                    { return(UNION); }
+"unsigned"                { return(UNSIGNED); }
+"void"                    { return(VOID); }
+"volatile"                { return(VOLATILE); }
+"while"                    { return(WHILE); }
 "_Alignas"                              { return ALIGNAS; }
 "_Alignof"                              { return ALIGNOF; }
 "_Atomic"                               { return ATOMIC; }
@@ -114,71 +114,71 @@ static int check_type(void);
 "_Thread_local"                         { return THREAD_LOCAL; }
 "__func__"                              { return FUNC_NAME; }
 
-{L}{A}*					{ return check_type(); }
+{L}{A}*                    { return check_type(); }
 
-{HP}{H}+{IS}?				{ return I_CONSTANT; }
-{NZ}{D}*{IS}?				{ return I_CONSTANT; }
-"0"{O}*{IS}?				{ return I_CONSTANT; }
-{CP}?"'"([^'\\\n]|{ES})+"'"		{ return I_CONSTANT; }
+{HP}{H}+{IS}?                { return I_CONSTANT; }
+{NZ}{D}*{IS}?                { return I_CONSTANT; }
+"0"{O}*{IS}?                { return I_CONSTANT; }
+{CP}?"'"([^'\\\n]|{ES})+"'"        { return I_CONSTANT; }
 
-{D}+{E}{FS}?				{ return F_CONSTANT; }
-{D}*"."{D}+{E}?{FS}?			{ return F_CONSTANT; }
-{D}+"."{E}?{FS}?			{ return F_CONSTANT; }
-{HP}{H}+{P}{FS}?			{ return F_CONSTANT; }
-{HP}{H}*"."{H}+{P}{FS}?			{ return F_CONSTANT; }
-{HP}{H}+"."{P}{FS}?			{ return F_CONSTANT; }
+{D}+{E}{FS}?                { return F_CONSTANT; }
+{D}*"."{D}+{E}?{FS}?            { return F_CONSTANT; }
+{D}+"."{E}?{FS}?            { return F_CONSTANT; }
+{HP}{H}+{P}{FS}?            { return F_CONSTANT; }
+{HP}{H}*"."{H}+{P}{FS}?            { return F_CONSTANT; }
+{HP}{H}+"."{P}{FS}?            { return F_CONSTANT; }
 
-({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+	{ return STRING_LITERAL; }
+({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+    { return STRING_LITERAL; }
 
-"..."					{ return ELLIPSIS; }
-">>="					{ return RIGHT_ASSIGN; }
-"<<="					{ return LEFT_ASSIGN; }
-"+="					{ return ADD_ASSIGN; }
-"-="					{ return SUB_ASSIGN; }
-"*="					{ return MUL_ASSIGN; }
-"/="					{ return DIV_ASSIGN; }
-"%="					{ return MOD_ASSIGN; }
-"&="					{ return AND_ASSIGN; }
-"^="					{ return XOR_ASSIGN; }
-"|="					{ return OR_ASSIGN; }
-">>"					{ return RIGHT_OP; }
-"<<"					{ return LEFT_OP; }
-"++"					{ return INC_OP; }
-"--"					{ return DEC_OP; }
-"->"					{ return PTR_OP; }
-"&&"					{ return AND_OP; }
-"||"					{ return OR_OP; }
-"<="					{ return LE_OP; }
-">="					{ return GE_OP; }
-"=="					{ return EQ_OP; }
-"!="					{ return NE_OP; }
-";"					{ return ';'; }
-("{"|"<%")				{ return '{'; }
-("}"|"%>")				{ return '}'; }
-","					{ return ','; }
-":"					{ return ':'; }
-"="					{ return '='; }
-"("					{ return '('; }
-")"					{ return ')'; }
-("["|"<:")				{ return '['; }
-("]"|":>")				{ return ']'; }
-"."					{ return '.'; }
-"&"					{ return '&'; }
-"!"					{ return '!'; }
-"~"					{ return '~'; }
-"-"					{ return '-'; }
-"+"					{ return '+'; }
-"*"					{ return '*'; }
-"/"					{ return '/'; }
-"%"					{ return '%'; }
-"<"					{ return '<'; }
-">"					{ return '>'; }
-"^"					{ return '^'; }
-"|"					{ return '|'; }
-"?"					{ return '?'; }
+"..."                    { return ELLIPSIS; }
+">>="                    { return RIGHT_ASSIGN; }
+"<<="                    { return LEFT_ASSIGN; }
+"+="                    { return ADD_ASSIGN; }
+"-="                    { return SUB_ASSIGN; }
+"*="                    { return MUL_ASSIGN; }
+"/="                    { return DIV_ASSIGN; }
+"%="                    { return MOD_ASSIGN; }
+"&="                    { return AND_ASSIGN; }
+"^="                    { return XOR_ASSIGN; }
+"|="                    { return OR_ASSIGN; }
+">>"                    { return RIGHT_OP; }
+"<<"                    { return LEFT_OP; }
+"++"                    { return INC_OP; }
+"--"                    { return DEC_OP; }
+"->"                    { return PTR_OP; }
+"&&"                    { return AND_OP; }
+"||"                    { return OR_OP; }
+"<="                    { return LE_OP; }
+">="                    { return GE_OP; }
+"=="                    { return EQ_OP; }
+"!="                    { return NE_OP; }
+";"                    { return ';'; }
+("{"|"<%")                { return '{'; }
+("}"|"%>")                { return '}'; }
+","                    { return ','; }
+":"                    { return ':'; }
+"="                    { return '='; }
+"("                    { return '('; }
+")"                    { return ')'; }
+("["|"<:")                { return '['; }
+("]"|":>")                { return ']'; }
+"."                    { return '.'; }
+"&"                    { return '&'; }
+"!"                    { return '!'; }
+"~"                    { return '~'; }
+"-"                    { return '-'; }
+"+"                    { return '+'; }
+"*"                    { return '*'; }
+"/"                    { return '/'; }
+"%"                    { return '%'; }
+"<"                    { return '<'; }
+">"                    { return '>'; }
+"^"                    { return '^'; }
+"|"                    { return '|'; }
+"?"                    { return '?'; }
 
-{WS}+					{ /* whitespace separates tokens */ }
-.					{ /* discard bad characters */ }
+{WS}+                    { /* whitespace separates tokens */ }
+.                    { /* discard bad characters */ }
 
 %%
 

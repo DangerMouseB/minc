@@ -5,29 +5,29 @@ QBE=$DIR/../qbe/qbe
 
 usage()
 {
-	echo "usage: qq file.q" >&2
-	exit 1
+  echo "usage: qq file.q" >&2
+  exit 1
 }
 
 for i
 do
-	case $i in
-	-*)
-		flags="$flags $i"
-		;;
-	*)
-		if ! test -z $file
-		then
-			usage
-		fi
-		file=$i
-		;;
-	esac
+  case $i in
+  -*)
+    flags="$flags $i"
+    ;;
+  *)
+    if ! test -z $file
+    then
+      usage
+    fi
+    file=$i
+    ;;
+  esac
 done
 
 if test -z $file
 then
-	usage
+  usage
 fi
 
 file2="${file%.*}"
@@ -38,7 +38,7 @@ cc -o $file2 $file2.o -L$DIR/lib -lbuckets -lpp -lc
 
 if test $? -ne 0
 then
-	echo "error processing file $file" >&2
-	exit 1
+  echo "error processing file $file" >&2
+  exit 1
 fi
 

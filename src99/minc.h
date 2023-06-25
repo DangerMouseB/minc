@@ -90,8 +90,8 @@ static char *btyptopp[] = {
 #define KIND(t) ((t) & 0xff)
 #define SIZE(t) (                                   \
     t == T_VOID ? (die("void has no size"), 0) : (  \
-	t == B_I32 ? 4 : (                              \
-	8                                               \
+    t == B_I32 ? 4 : (                              \
+    8                                               \
 )))
 
 

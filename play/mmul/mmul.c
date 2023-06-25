@@ -32,16 +32,16 @@ int mmul2(double **A, double **B, int nA, int mA, int mB, double **out) {
 }
 
 int main(int ac, void **av) {
-	int i;
+    int i;
     int **board;
 
-	Q = 8;
-	if (ac >= 2)
-		Q = atoi(av[1]);
-	board = calloc(Q, sizeof(int *));
-	for (i=0; i<Q; i++)
-		board[i] = calloc(Q, sizeof(int));
-	go(0, board);
-	printf("found %d solutions\n", N);
+    Q = 8;
+    if (ac >= 2)
+        Q = atoi(av[1]);
+    board = calloc(Q, sizeof(int *));
+    for (i=0; i<Q; i++)
+        board[i] = calloc(Q, sizeof(int));
+    go(0, board);
+    printf("found %d solutions\n", N);
 }
 
