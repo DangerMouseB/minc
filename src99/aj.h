@@ -5,7 +5,7 @@
 #include "util.h"
 
 #include "buckets.c"
-#include "btype.h"
+#include "aj/btype.h"
 
 
 #endif // AJ_H

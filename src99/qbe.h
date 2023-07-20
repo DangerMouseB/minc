@@ -310,7 +310,7 @@ void emitcall(Node *n, Symb *sr) {
         bug(MINC_QBE_H ">>emitcall @ %d", __LINE__);
     isExtern = fitsWithin(s.btyp, B_EXTERN);
     for (a = n->r; a; a = a->r)
-        a->s = emitexpr(a->l);
+        a->s = emitexpr(a->l);                      // mutate the node with the allocated symbol
     if ((KIND(s.btyp) & 0x7f) == B_FN) {
         sr->btyp = tRet(s.btyp) & 0x7f7f7f7f;
         putq(QINDENT);

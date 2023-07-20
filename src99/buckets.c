@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include "dm/pp.h"
+#include "aj/buckets.h"
 
 void nyi(char *msg, ...);
 
@@ -20,30 +21,8 @@ unsigned int PAGE_SIZE = 4096;
 //  ...
 //  reallocInBuckets(all_strings, buf, 0, align:1);
 
-struct Buckets {
-    void *first_bucket;     // 8
-    void *current_bucket;   // 8
-    void *next;             // 8
-    void *eoc;              // 8
-    void *last_alloc;       // 8
-    unsigned short nPages;  // 2
-};
 
-struct BucketsCheckpoint {
-    void *current_bucket;   // 8
-    void *next;             // 8
-    void *eoc;              // 8
-    void *last_alloc;       // 8
-};
 
-struct BucketHeader {
-    void *next_chunk;       // 8
-    void *eoc;              // 8
-};
-
-typedef struct Buckets Buckets;
-typedef struct BucketsCheckpoint BucketsCheckpoint;
-typedef struct BucketHeader BucketHeader;
 
 void *_nextBucket(Buckets *a, unsigned int n, unsigned int align);
 void *_allocBucket(size_t size);
