@@ -1,5 +1,5 @@
-#ifndef AJ_BUCKETS_H
-#define AJ_BUCKETS_H "aj/buckets.h"
+#ifndef BK_BUCKETS_H
+#define BK_BUCKETS_H "bk/buckets.h"
 
 #define SIZEOF_BUCKETS 42
 #define Buckets void
@@ -48,4 +48,4 @@ int isAlive(Buckets *a, void *p);
 int isDead(Buckets *a, void *p);
 
 
-#endif // AJ_BUCKETS_H
+#endif // BK_BUCKETS_H

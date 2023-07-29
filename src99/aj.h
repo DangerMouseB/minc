@@ -1,11 +1,11 @@
-#ifndef AJ_H
-#define AJ_H
+#ifndef BK_H
+#define BK_H
 
 #include <stdlib.h>
 #include "util.h"
 
-#include "buckets.c"
-#include "aj/btype.h"
+#include "../bk/src/bk/buckets.c"
+#include "bk/btype.h"
 
 
-#endif // AJ_H
+#endif // BK_H

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdalign.h>
-#include "aj/btype.h"
+#include "bk/btype.h"
+#include "bk/buckets.h"
 #include "../rst.h"
 
 
@@ -24,7 +25,7 @@
 
 
 // doing bones and C here to stretch the design - C is pass by value, bones is pass by ref, C allows mutation,
-// bones does not, C allocs and frees memory directory, bones uses a CoW memory manager
+// bones does not, C allocs and frees memory directly, bones uses a CoW memory manager
 // both can compile to QBE, MIR, LLVM and BVM (BVM, JBC, BBC?), both use the C ABI, and bones needs exceptions,
 // both should be debuggable (at least in the BVM). The BVM should expose a C ABI and thus be easily embeddable.
 // Jones should provide gc, arenas, scratch, borrow and CoW support. The BVM speaks the debugger protocol.
@@ -100,7 +101,7 @@ int main(int argc, char*argv[]) {
     // fns
     // add_2; litint*litint ^ litint
 
-    n1 = mkstalloc(&a, 1, "a", i32);  // where to store type?
+    n1 = mkstalloc(&a, 1, "a", _i32);
 
     // exponentials need to grow and shrink
     // garbage collectors need to be able to traverse a network easily - does it look like a pointer
