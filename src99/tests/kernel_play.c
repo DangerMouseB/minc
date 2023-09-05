@@ -1,5 +1,5 @@
-#include "bk/kernel.h"
-#include "bk/common/os.h"
+#include "../../bk/include/bk/kernel.h"
+#include "../../bk/include/bk/os.h"
 
 
 

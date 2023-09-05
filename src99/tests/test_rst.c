@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stdalign.h>
-#include "bk/btype.h"
-#include "bk/buckets.h"
+#include "../../bk/include/bk/btype.h"
+#include "../../bk/include/bk/buckets.h"
 #include "../rst.h"
 
 

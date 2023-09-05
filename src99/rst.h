@@ -2,9 +2,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include "bk/buckets.h"
-#include "bk/btype.h"
-#include "bk/common/pp.h"
+#include "../bk/include/bk/buckets.h"
+#include "../bk/include/bk/btype.h"
+#include "../bk/src/bk/pp.c"
 
 // for loop
 // while loop
@@ -81,7 +81,6 @@ typedef struct {
     enum scope scope;
     // OPEN: locals needs to remember which variables have been allocated on the stack and where (lazy initially then preallocated later)
 } bscope;
-
 
 
 

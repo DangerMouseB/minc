@@ -6,8 +6,9 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdalign.h>
-#include "bk/pp.c"
-#include "aj.h"
+#include "../bk/src/bk/pp.c"
+#include "../bk/src/bk/buckets.c"
+#include "../bk/include/bk/btype.h"
 
 
 // compiler constants (enum so get in debugger)

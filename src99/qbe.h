@@ -6,12 +6,12 @@
 
 // code gen constants - PVAR is the pointer to the memory that backs a C variable
 #define GLOBAL  "$"
-#define QEXTERN  "$"
+#define QEXTERN "$"
 #define STRING  "$.s"
 #define TEMP    "%%."
 #define PVAR    "%%_"
 #define LABEL   "@"
-#define QINDENT  "    "
+#define QINDENT "    "
 
 
 
