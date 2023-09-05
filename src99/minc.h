@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdalign.h>
+#include "bk/pp.c"
 #include "aj.h"
 
 
@@ -18,16 +19,6 @@ enum {
     LBL_START = 1,
     STR_START = 1,
 };
-
-
-
-// ---------------------------------------------------------------------------------------------------------------------
-// FORWARD DECLARATIONS
-// ---------------------------------------------------------------------------------------------------------------------
-
-void PP(int level, char *msg, ...);
-void die(char *msg, ...);
-void bug(char *msg, ...);
 
 
 
@@ -390,18 +381,6 @@ typedef struct TLLHead TLLHead;
 typedef struct NameType NameType;
 
 
-// logging
-enum {
-    lex = 1,
-    parse = 2,
-    emit = 4,
-    info = 8,
-    error = 16,
-    pt = 32,        // parse tree
-};
-int g_logging_level = info;     // OPEN: add filter as well as level?
-
-
 // memory managers
 Buckets all_strings;
 BucketsCheckpoint idents_checkpoint;
@@ -551,44 +530,13 @@ void assertMissing(void *p, char* varname, int lineno) {
     if (p) die("not missing %s @ %d", varname, lineno);
 }
 
-void die_(char *preamble, char *msg, va_list args) {
+pvt void die_(char *preamble, char *msg, va_list args) {
     fprintf(stderr, "\nbefore end of line %d: ", isrcline);
     fprintf(stderr, "%s", preamble);
     vfprintf(stderr, msg, args);
     fprintf(stderr, "\nin %s\n\n", srcFfn);
     // OPEN: use setjmp and longjmp with deallocation of linked list of arenas
     exit(1);
-}
-
-void die(char *msg, ...) {
-    va_list args;
-    va_start(args, msg);
-    die_("", msg, args);
-    va_end(args);
-}
-
-void nyi(char *msg, ...) {
-    va_list args;
-    va_start(args, msg);
-    die_("nyi: ", msg, args);
-    va_end(args);
-}
-
-void bug(char *msg, ...) {
-    va_list args;
-    va_start(args, msg);
-    die_("bug: ", msg, args);
-    va_end(args);
-}
-
-void PP(int level, char *msg, ...) {
-    if (level & g_logging_level) {
-        va_list args;
-        va_start(args, msg);
-        vfprintf(stderr, msg, args);
-        fprintf(stderr, "\n");
-        va_end(args);
-    }
 }
 
 void PPbtyp(int level, enum btyp t) {
