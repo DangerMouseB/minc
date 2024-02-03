@@ -25,7 +25,10 @@
 #include <string.h>
 
 #include "minc.h"
-#include "qbe.h"
+#include "../coppertop/bk/include/bk/qbe.h"
+#include "../coppertop/bk/include/bk/k.h"
+#include "../coppertop/bk/src/bk/mm.c"
+#include "../coppertop/bk/src/bk/tm.c"
 
 
 int yylex(void);
@@ -128,7 +131,7 @@ Node * mkopassign(Node *op, Node *l, Node *r, int lineno) {
     return node(OP_ASSIGN, l, r, lineno);
 }
 
-Node * mktype(int tok, enum btyp t, int lineno) {
+Node * mktype(int tok, btypeid_t t, int lineno) {
     Node * n = node(tok, 0, 0, lineno);
     n->s.btyp = t;
     return n;
@@ -192,9 +195,9 @@ int ptdeclarationspecifiersForExtern(Node *ds) {
     return 0;
 }
 
-enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
+btypeid_t ptdeclarationspecifiersToBTypeId(Node *ds) {
     // OPEN: convert tokens to the correct hardcoded btyp enum
-    enum tok op;  Node *n;  enum btyp baseType = 0;  int hasSigned = 0, hasUnsigned = 0, hasConst = 0;
+    enum tok op;  Node *n;  btypeid_t baseType = 0;  int hasSigned = 0, hasUnsigned = 0, hasConst = 0;
     n = ds->l;
     while (n) {
         op = (enum tok) n->s.btyp;
@@ -329,26 +332,26 @@ enum btyp ptdeclarationspecifiersToBTypeId(Node *ds) {
 }
 
 
-unsigned int pointerise(enum btyp btyp, Node *ptr, int isarray) {
+unsigned int pointerise(btypeid_t btyp, Node *ptr, int isarray) {
     // OPEN check for const, volatile, restrict
     while (ptr) {
         assertTok(ptr, "ptr", pt_pointer, __LINE__);
         if (ptr->l->tok == T_PTR) {
             btyp <<= 8;
-            btyp |= B_PTR;
+            btyp |= B_P;
         }
         ptr = ptr->r;
     }
     if (isarray) {
         btyp <<= 8;
-        btyp |= B_PTR;
+        btyp |= B_P;
     }
     return btyp;
 }
 
 
 NameType * ptparametertypelistToParameters(Node * ptl) {
-    NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id;  int is_array = 0;  enum btyp t;
+    NameType *start=0, *next, *prior=0;  Node *pd, *ds, *d, *id;  int is_array = 0;  btypeid_t t;
     if (!ptl) return NULL;
     for (; ptl; next->btyp=t, ptl=ptl->r, prior=next) {
         next = allocInBuckets(&nodes, sizeof (NameType), alignof (NameType));
@@ -407,14 +410,14 @@ int argNumOfEllipsis(Node *fd) {
 }
 
 void process_function_definition(Node *ds, Node *d, Node* cs) {
-    NameType *params = 0, *p;  enum btyp tRet;  char *fnname;  int oglo;
+    NameType *params = 0, *p;  btypeid_t tRet;  char *fnname;  int oglo;
     PP(emit, "process_function_definition");
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
     tRet = ptdeclarationspecifiersToBTypeId(ds);
     if (ptdeclarationspecifiersForExtern(ds)) die("illegal extern in function definition");
     tRet = pointerise(tRet, d->l, 0);
-    assertTok(d->r, "d->r", func_def, __LINE__);
+    assertTok(d->r, "d->r", pt_func_def, __LINE__);
     assertExists(d->r->l, "d->r->l", __LINE__);
     assertTok(d->r->l, "d->r->l", IDENT, __LINE__);
     if (d->r->r) {
@@ -437,8 +440,8 @@ void process_function_definition(Node *ds, Node *d, Node* cs) {
     tmp_seed = TMP_START;
 }
 
-Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
-    Node *d, *decl, *fd, *d2;  char *name;  enum btyp btyp, btypFn;  int isPtrToFn=0;
+Node * parseInitDeclPt(Node *id, btypeid_t baseType, int isExtern) {
+    Node *d, *decl, *fd, *d2;  char *name;  btypeid_t btyp, btypFn;  int isPtrToFn=0;
     assertTok(id, "id", pt_init_declarator, __LINE__);
     assertExists(d = id->l, "d", __LINE__);
     assertTok(d, "d", pt_declarator, __LINE__);
@@ -453,7 +456,7 @@ Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
             if (btyp == B_VOID) die("invalid void declaration for %s", name);
             decl = node(DeclVar, d->r, id->r, __LINE__);
             if (isExtern) {
-                btyp = BTIntersect(btyp, B_EXTERN);
+                btyp = tm_interv(_bk.tm, 2, btyp, B_EXTERN);
                 decl->s.styp = Ext;     // will be added to globals later
             }
             else
@@ -463,7 +466,7 @@ Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
             symadd(name, 0, btyp);
             return decl;
 
-        case func_def:
+        case pt_func_def:
             // function declaration - can only be global so is added to symbol table
             fd = d->r;
             if (fd->l->tok == pt_LP_declarator_RP) {
@@ -484,11 +487,11 @@ Node * parseInitDeclPt(Node *id, enum btyp baseType, int isExtern) {
             btyp = pointerise(baseType, d->l, 0);      // OPEN: handle array, e.g. char *[] fred();
             btypFn = FUNC(btyp);
             if (isExtern) {
-                btypFn = BTIntersect(btypFn, B_EXTERN);
+                btypFn = tm_interv(_bk->tm, 2, btypFn, B_EXTERN);
                 globals[next_oglo].styp = Ext;
             }
             else if (isPtrToFn) {
-                btypFn = IDIR(btypFn);
+                btypFn = tm_inter(_bk->tm, btypFn, B_P, 0);
                 globals[next_oglo].styp = Glo;
             }
             else
@@ -522,7 +525,7 @@ void process_external_declaration(Node *decls) {
 
 
 Node * mkDeclarations(Node *ds, Node *idl, int lineno) {
-    enum btyp baseType;  Node *start=0, *next, *current, *id, *decl;  int isExtern=0;
+    btypeid_t baseType;  Node *start=0, *next, *current, *id, *decl;  int isExtern=0;
     assertTok(ds, "ds", pt_declaration_specifiers, __LINE__);
     baseType = ptdeclarationspecifiersToBTypeId(ds);
     isExtern = ptdeclarationspecifiersForExtern(ds);
@@ -753,26 +756,26 @@ init_declarator
 ;
 
 storage_class_specifier
-: TYPEDEF                                               { PP(pt, "TYPEDEF  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_TYPEDEF, $%); }
-| EXTERN                                                { PP(pt, "EXTERN  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_EXTERN, $%); }
-| STATIC                                                { PP(pt, "STATIC  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_STATIC, $%); }
-| AUTO                                                  { PP(pt, "AUTO  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_AUTO, $%); }
-| REGISTER                                              { PP(pt, "REGISTER  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, (enum btyp) T_REGISTER, $%); }
+: TYPEDEF                                               { PP(pt, "TYPEDEF  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, B_TYPEDEF, $%); }
+| EXTERN                                                { PP(pt, "EXTERN  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, B_EXTERN, $%); }
+| STATIC                                                { PP(pt, "STATIC  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, B_STATIC, $%); }
+| AUTO                                                  { PP(pt, "AUTO  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, B_AUTO, $%); }
+| REGISTER                                              { PP(pt, "REGISTER  =>  storage_class_specifier"); $$ = mktype(pt_storage_class_specifier, B_REGISTER, $%); }
 ;
 
 type_specifier
-: VOID                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_VOID, $%); }
-| CHAR                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_CHAR, $%); }
-| SHORT                                                 { $$ = mktype(pt_type_specifier, (enum btyp) T_SHORT, $%); }
-| INT                                                   { $$ = mktype(pt_type_specifier, (enum btyp) T_INT, $%); }
-| LONG                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_LONG, $%); }
-| FLOAT                                                 { $$ = mktype(pt_type_specifier, (enum btyp) T_FLOAT, $%); }
-| DOUBLE                                                { $$ = mktype(pt_type_specifier, (enum btyp) T_DOUBLE, $%); }
-| SIGNED                                                { $$ = mktype(pt_type_specifier, (enum btyp) T_SIGNED, $%); }
-| UNSIGNED                                              { $$ = mktype(pt_type_specifier, (enum btyp) T_UNSIGNED, $%); }
-| BOOL                                                  { $$ = mktype(pt_type_specifier, (enum btyp) T_BOOL, $%); }
-| COMPLEX                                               { $$ = mktype(pt_type_specifier, (enum btyp) T_COMPLEX, $%); }
-| IMAGINARY                                             { $$ = mktype(pt_type_specifier, (enum btyp) T_IMAGINARY, $%); }
+: VOID                                                  { $$ = mktype(pt_type_specifier, B_VOID, $%); }
+| CHAR                                                  { $$ = mktype(pt_type_specifier, B_CHAR, $%); }
+| SHORT                                                 { $$ = mktype(pt_type_specifier, B_SHORT, $%); }
+| INT                                                   { $$ = mktype(pt_type_specifier, B_INT, $%); }
+| LONG                                                  { $$ = mktype(pt_type_specifier, B_LONG, $%); }
+| FLOAT                                                 { $$ = mktype(pt_type_specifier, B_FLOAT, $%); }
+| DOUBLE                                                { $$ = mktype(pt_type_specifier, B_DOUBLE, $%); }
+| SIGNED                                                { $$ = mktype(pt_type_specifier, B_SIGNED, $%); }
+| UNSIGNED                                              { $$ = mktype(pt_type_specifier, B_UNSIGNED, $%); }
+| BOOL                                                  { $$ = mktype(pt_type_specifier, B_BOOL, $%); }
+| COMPLEX                                               { $$ = mktype(pt_type_specifier, B_COMPLEX, $%); }
+| IMAGINARY                                             { $$ = mktype(pt_type_specifier, B_IMAGINARY, $%); }
 | struct_or_union_specifier                             { nyi("@ %d", $%); }
 | enum_specifier                                        { nyi("@ %d", $%); }
 | TYPE_NAME                                             { nyi("@ %d", $%); }
@@ -785,8 +788,8 @@ struct_or_union_specifier
 ;
 
 struct_or_union
-: STRUCT                                                { PP(pt, "STRUCT   =>   struct_or_union"); $$ = mktype(T_STRUCT, 0, $%); }
-| UNION                                                 { PP(pt, "UNION   =>   struct_or_union"); $$ = mktype(T_UNION, 0, $%); }
+: STRUCT                                                { PP(pt, "STRUCT   =>   struct_or_union"); $$ = mktype(B_STRUCT, 0, $%); }
+| UNION                                                 { PP(pt, "UNION   =>   struct_or_union"); $$ = mktype(B_UNION, 0, $%); }
 ;
 
 struct_declaration_list
@@ -835,9 +838,9 @@ enumerator
 ;
 
 type_qualifier
-: CONST                                                 { $$ = mktype(pt_type_qualifier, (enum btyp) T_CONST, $%); }
-| RESTRICT                                              { $$ = mktype(pt_type_qualifier, (enum btyp) T_RESTRICT, $%); }
-| VOLATILE                                              { $$ = mktype(pt_type_qualifier, (enum btyp) T_VOLATILE, $%); }
+: CONST                                                 { $$ = mktype(pt_type_qualifier, B_CONST, $%); }
+| RESTRICT                                              { $$ = mktype(pt_type_qualifier, B_RESTRICT, $%); }
+| VOLATILE                                              { $$ = mktype(pt_type_qualifier, B_VOLATILE, $%); }
 ;
 
 function_specifier
@@ -862,9 +865,9 @@ direct_declarator
 | direct_declarator '[' type_qualifier_list '*' ']'                             { nyi("@ %d", $%); }
 | direct_declarator '[' '*' ']'                                                 { nyi("@ %d", $%); }
 | direct_declarator '[' ']'                                                     { $$ = nodepp(pt_array, $1, 0, $%, pt, "direct_declarator '[' ']'   =>   direct_declarator"); }
-| direct_declarator '(' parameter_type_list ')'                                 { $$ = nodepp(func_def, $1, $3, $%, pt, "direct_declarator '(' parameter_type_list ')'   =>   direct_declarator"); }
+| direct_declarator '(' parameter_type_list ')'                                 { $$ = nodepp(pt_func_def, $1, $3, $%, pt, "direct_declarator '(' parameter_type_list ')'   =>   direct_declarator"); }
 | direct_declarator '(' identifier_list ')'                                     { nyi("direct_declarator '(' identifier_list ')'   =>   direct_declarator");  }
-| direct_declarator '(' ')'                                                     { $$ = nodepp(func_def, $1, 0, $%, pt, "direct_declarator '(' ')'   =>   direct_declarator"); }
+| direct_declarator '(' ')'                                                     { $$ = nodepp(pt_func_def, $1, 0, $%, pt, "direct_declarator '(' ')'   =>   direct_declarator"); }
 ;
 
 pointer
@@ -1283,10 +1286,10 @@ int yylex() {
 
 // OPEN: refactor this so globals and ir emission are not complected
 void emitglobals() {
-    enum btyp btyp;  int isExtern;  int emitGloHeader = 1, emitStrHeader = 1;
+    btypeid_t btyp;  int isExtern;  int emitGloHeader = 1, emitStrHeader = 1;
     for (int oglo = 0; oglo < next_oglo; oglo++) {
         btyp = globals[oglo].btyp;
-        isExtern = fitsWithin(btyp, B_EXTERN);
+        isExtern = tm_fitsWithin(btyp, B_EXTERN);
         // OPEN: add alignment and maybe use z to init the memory to 0
         if (globals[oglo].styp == Glo && !isExtern) {
             if (emitGloHeader) {
@@ -1307,6 +1310,7 @@ void emitglobals() {
 }
 
 int main(int argc, char*argv[]) {
+    minc_createBk();
     if (argc == 2) {
         const char *ffn = argv[1];
         FILE *file = fopen(ffn, "r");

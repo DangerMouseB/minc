@@ -6,9 +6,10 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdalign.h>
-#include "../bk/src/bk/pp.c"
-#include "../bk/src/bk/buckets.c"
-#include "../bk/include/bk/btype.h"
+#include "../coppertop/bk/src/bk/k.c"
+#include "../coppertop/bk/src/bk/pp.c"
+#include "../coppertop/bk/src/bk/mm.c"
+#include "../coppertop/bk/src/bk/tm.c"
 
 
 // compiler constants (enum so get in debugger)
@@ -22,61 +23,14 @@ enum {
 };
 
 
-
-// ---------------------------------------------------------------------------------------------------------------------
-// btyp enum
-// here just to allow CLion to make life easier when debugging - eventually will replace with BTYPE_ID
-// encoding up to 3 pointers + a btyp can be capture in 4 bytes, bit 7 of btyp indicates extern
-// pointer to a fn:     tRet, B_FN, B_PTR
-// pointer:             BASE_TYPE, B_PTR
-// ---------------------------------------------------------------------------------------------------------------------
-
-#define _hc1 0
-#define _hc2 20
-
-enum btyp {
-    B_CHAR = _hc1+5,        // B_I8 - implementation defined (poss with compiler flags)
-    B_U8  = _hc1+1,         // unsigned char
-    B_U16 = _hc1+2,         // unsigned short
-    B_U32 = _hc1+3,         // unsigned int, unsigned
-    B_U64 = _hc1+4,         // unsigned long, unsigned long int
-    B_I8  = _hc1+5,         // char, signed char
-    B_I16 = _hc1+6,         // short, signed short
-    B_I32 = _hc1+7,         // int, signed int, signed
-    B_I64 = _hc1+8,         // long, long int, signed long, signed long int
-
-    B_F32 = _hc1+9,         // float
-    B_F64 = _hc1+10,        // double
-
-//    B_N_CHAR_STAR = _hc1+12,  // N**chars, char*argv[], char**
-//    B_TXT = _hc1+13,        // txt (length prefixed, null terminated uft-8 array)
-//    B_NN_I32 = _hc1+14,     // int **, signed int **
-//    B_N_I32 = _hc1+15,      // int *, signed int *
-
-    B_VOID = _hc2+1,
-    B_VARARGS = _hc2+2,
-    B_U8_S = _hc2+3,
-    B_N_MEM = _hc2+4,       // N**MEM, implemented as void **
-    B_PTR = _hc2+5,
-    B_FN = _hc2+6,
-    B_VOID_STAR = (B_VOID << 8) | B_PTR,
-    B_CHAR_STAR = (B_CHAR << 8) | B_PTR,
-    B_FN_PTR = (B_FN << 8) | B_PTR,
-
-    B_EXTERN = 128,
-    B_EXTERN_FN = B_EXTERN + B_FN,
-    B_EXTERN_FN_PTR = B_EXTERN + B_FN_PTR,
-};
-
 static char *btyptopp[] = {
         [B_U8] = "B_U8",                [B_U16] = "B_U16",              [B_U32] = "B_U32",              [B_U64] = "B_U64",
         [B_I8] = "B_I8",                [B_I16] = "B_I16",              [B_I32] = "B_I32",              [B_I64] = "B_I64",
         [B_F32] = "B_F32",              [B_F64] = "B_F64",
         [B_VOID_STAR] = "B_VOID_STAR",  [B_CHAR_STAR] = "B_CHAR_STAR",
-        [B_VOID] = "B_VOID",            [B_VARARGS] = "B_VARARGS",      [B_U8_S] = "B_U8_S",            [B_N_MEM] = "B_N_MEM",
+        [B_VOID] = "B_VOID",            [B_VARARGS] = "B_VARARGS",
 };
 
-#define IDIR(t) (((t) << 8) + B_PTR)
 #define FUNC(t) (((t) << 8) + B_FN)
 #define DREF(t) ((t) >> 8)
 #define KIND(t) ((t) & 0xff)
@@ -87,57 +41,38 @@ static char *btyptopp[] = {
 )))
 
 
-int fitsWithin(enum btyp a, enum btyp b) {
-    // should answer a tuple {cacheID, doesFit, tByT, distance}
-    // tByT can just be a T sorted list (not worth doing a hash)
-    if (a == b) return 1;
-    if ((b == B_EXTERN) && (a & B_EXTERN)) return 1;
-    if ((b == B_FN) && ((a & 0x7f) == B_FN)) return 1;
-    if ((b == B_EXTERN_FN_PTR) && ((a & 0xffff) == B_EXTERN_FN_PTR)) return 1;
-    if ((b == B_FN_PTR) && ((a & 0xff7f) == B_FN_PTR)) return 1;
-    if ((b == B_CHAR_STAR) && ((a & 0xff7f) == B_CHAR_STAR)) return 1;
-    if ((b == B_VOID_STAR) && ((a & 0xff7f) == B_VOID_STAR)) return 1;
-    if ((a & 0x000000FF) == b) return 1;
+BK_K *_bk;
+
+static btypeid_t _tDepointered(btypeid_t t) {
+    if (tm_fitsWithin(_bk->tm, t, B_PPP)) return tm_minus(_bk->tm, t, B_PPP, 0);
+    if (tm_fitsWithin(_bk->tm, t, B_PP)) return tm_minus(_bk->tm, t, B_PP, 0);
+    if (tm_fitsWithin(_bk->tm, t, B_P)) return tm_minus(_bk->tm, t, B_P, 0);
     return 0;
 }
 
-static enum btyp _tDepointered(enum btyp t) {
-    while ((t & 0x000000FF) == B_PTR) t >>= 8;
-    return t;
+static btypeid_t _tIndirect(btypeid_t t) {
+    if (tm_fitsWithin(_bk->tm, t, B_PPP)) return 0;
+    if (tm_fitsWithin(_bk->tm, t, B_PP)) return tm_interv(_bk->tm, 2, B_PPP, tm_minus(_bk->tm, t, B_PP, 0), 0);
+    if (tm_fitsWithin(_bk->tm, t, B_P)) return tm_interv(_bk->tm, 2, B_PP, tm_minus(_bk->tm, t, B_P, 0), 0);
+    return tm_interv(_bk->tm, 2, B_P, t, 0);
 }
 
-enum btyp tRet(enum btyp tFn) {
-    return tFn >> 8;               // functions are stored shifted with type B_FN
-}
-
-void fPPT(FILE *f, enum btyp t) {
-    int separate = 0;  enum btyp tBase;
+void fPPT(FILE *f, btypeid_t t) {
+    int separate = 0;  btypeid_t tBase;
     tBase = _tDepointered(t);
-    if (fitsWithin(t, B_EXTERN)) {fputs("extern", f); separate = 1;}
-    if (fitsWithin(tBase, B_FN)) {
+    if (tm_fitsWithin(_bk->tm, t, B_EXTERN)) {fputs("extern", f); separate = 1;}
+    if (tm_fitsWithin(_bk->tm, tBase, B_FN)) {
         if (separate) {fputc(' ', f); separate = 0;}
         fputs("(...) ->", f);
         tBase >>= 8;
         separate = 1;
     }
     if (separate) {fputc(' ', f); separate = 0;}
-    while ((t & 0x000000FF) == B_PTR) {
+    while ((t & 0x000000FF) == B_P) {
         fputc('*', f);
         t >>= 8;
     }
     fputs(btyptopp[tBase], f);
-}
-
-enum btyp BTIntersect(enum btyp a, enum btyp b) {
-    if ((a & 0x00000080) == 0 && (b == B_EXTERN)) return a | B_EXTERN;
-    nyi("BTIntersect");
-    return 0;
-}
-
-enum btyp minus(enum btyp a, enum btyp b) {
-    if (b & 0x80) return a & 0xffffff7f;
-    nyi("minus");
-    return 0;
 }
 
 
@@ -155,130 +90,130 @@ enum tok {
 
     MISSING = 0,
 
-
     // type tokens
-    T_TYPE_NAME = _t+1,
-    T_TYPEDEF   = _t+2,
-    T_EXTERN    = _t+3,
-    T_STATIC    = _t+4,
-    T_AUTO      = _t+5,
-    T_REGISTER  = _t+6,
-    T_STRUCT    = _t+7,
-    T_UNION     = _t+8,
+    T_TYPE_NAME,
+    T_TYPEDEF,
+    T_EXTERN,
+    T_STATIC,
+    T_AUTO,
+    T_REGISTER,
+    T_STRUCT,
+    T_UNION,
 
-    T_CONST     = _t+9,
-    T_RESTRICT  = _t+10,
-    T_VOLATILE  = _t+11,
-    T_INLINE    = _t+12,
+    T_CONST,
+    T_RESTRICT,
+    T_VOLATILE,
+    T_INLINE,
 
-    T_VOID      = _t+13,
-    T_CHAR      = _t+14,
-    T_SHORT     = _t+15,
-    T_INT       = _t+16,
-    T_LONG      = _t+17,
+    T_VOID,
+    T_CHAR,
+    T_SHORT,
+    T_INT,
+    T_LONG,
 
-    T_FLOAT     = _t+18,
-    T_DOUBLE    = _t+19,
-    T_SIGNED    = _t+20,        // OPEN: drop these and add uchar etc
-    T_UNSIGNED  = _t+21,
-    T_BOOL      = _t+22,
-    T_COMPLEX   = _t+23,
-    T_IMAGINARY = _t+24,
+    T_FLOAT,
+    T_DOUBLE,
+    T_SIGNED,
+    T_UNSIGNED,
+    T_BOOL,
+    T_COMPLEX,
+    T_IMAGINARY,
 
-    T_PTR       = _t+25,
-    T_ELLIPSIS  = _t+26,
+    T_PTR,
+    T_ELLIPSIS,
 
 
     // expressions
-    LIT_CHAR    = _expr,            // e.g. '\n' OPEN: add these to lexer
-    LIT_INT     = _expr+1,
-    LIT_DEC     = _expr+2,
-    LIT_STR     = _expr+3,
-    LIT_BOOL    = _expr+4,
+    LIT_CHAR,           // e.g. '\n' OPEN: add these to lexer
+    LIT_INT,
+    LIT_DEC,
+    LIT_STR,
+    LIT_BOOL,
 
-    OP_CALL     = _expr+5,
+    OP_CALL,
 
-    OP_IIF      = _expr+6,          // ? :
-    OP_TF       = _expr+7,          // ditto
-    OP_AND      = _expr+8,
-    OP_OR       = _expr+9,
+    OP_IIF,             // ? :
+    OP_TF,              // ditto
+    OP_AND,
+    OP_OR,
 
-    OP_BINV     = _expr+10,         // ~ need to use xor
-    OP_NOT      = _expr+11,         // !
-    OP_ATTR     = _expr+12,         // e.g. x.name
+    OP_BINV,            // ~ need to use xor
+    OP_NOT,             // !
+    OP_ATTR,            // e.g. x.name
 
-    IDENT       = _expr+14,
-    OP_ADDR     = _expr+15,         // &
-    OP_DEREF    = _expr+16,         // *
+    IDENT,
+    OP_ADDR,            // &
+    OP_DEREF,           // *
 
-    OP_INC      = _expr+17,
-    OP_DEC      = _expr+18,
-    OP_ASSIGN   = _expr+19,
-    OP_NEG      = _expr+20,         // -
+    OP_INC,
+    OP_DEC,
+    OP_ASSIGN,
+    OP_NEG,             // -
 
     // base types - w is word, l is long, s is single, d is double
     // extended types - b is byte, h is half word (for aggregate types and data defs)
     // T is wlsd, I is wl, F is sd, m is pointer (on 64-bit architectures it is the same as l)
     // simple binary expressions
-    OP_ADD      = _bin,             // addT
-    OP_SUB      = _bin+1,           // subT
-    OP_MUL      = _bin+2,           // mulT
-    OP_DIV      = _bin+3,           // divT, udivT
-    OP_MOD      = _bin+4,           // udivI, remI, uremI
-    OP_LSHIFT   = _bin+5,           // shlI
-    OP_RSHIFT   = _bin+6,           // sarI, shrI
+    OP_ADD,             // addT
+    OP_SUB,             // subT
+    OP_MUL,             // mulT
+    OP_DIV,             // divT, udivT
+    OP_MOD,             // udivI, remI, uremI
+    OP_LSHIFT,          // shlI
+    OP_RSHIFT,          // sarI, shrI
 
-    OP_EQ       = _bin+7,           // ceqT
-    OP_NE       = _bin+8,           // cneT
-    OP_LE       = _bin+9,           // csleI, csgeI, culeI, cugeI, cleF, cgeF
-    OP_LT       = _bin+10,          // csltI, csgtI, cultI, cugtI, cltF, cgtF
+    OP_EQ,              // ceqT
+    OP_NE,              // cneT
+    OP_LE,              // csleI, csgeI, culeI, cugeI, cleF, cgeF
+    OP_LT,              // csltI, csgtI, cultI, cugtI, cltF, cgtF
 
-    OP_BAND     = _bin+11,          // andI
-    OP_BOR      = _bin+12,          // orI
-    OP_BXOR     = _bin+13,          // xorI
+    OP_BAND,            // andI
+    OP_BOR,             // orI
+    OP_BXOR,            // xorI
 
 
     // statements
-    Label       = _stmt+1,
-    If          = _stmt+2,
-    IfElse      = _stmt+3,
-    Else        = _stmt+4,
-    While       = _stmt+5,          // for is implemented in terms of while
-    Select      = _stmt+6,
-    Case        = _stmt+7,
-    Default     = _stmt+8,
-    Goto        = _stmt+9,
-    Continue    = _stmt+10,
-    Break       = _stmt+11,
-    Ret         = _stmt+12,
-    Seq         = _stmt+13,
-    Do          = _stmt+14,
-    DeclVar     = _stmt+15,
-    DeclVars    = _stmt+16,
+    Label,
+    If,
+    IfElse,
+    Else,
+    While,
+    // For,               // for is implemented in terms of while
+    Select,
+    Case,
+    Default,
+    Goto,
+    Continue,
+    Break,
+    Ret,
+    Seq,
+    Do,
+    DeclVar,
+    DeclVars,
 
 
     // parse tree construction
-    func_def                    = _pt+1,
-    pt_declaration              = _pt+2,
-    pt_parameter_type_list      = _pt+3,
-    pt_argument_expression_list = _pt+4,
-    pt_declarator               = _pt+5,
-    pt_abstract_declarator      = _pt+6,
-    pt_identifier_list          = _pt+7,
-    pt_init_declarator_list     = _pt+8,
-    pt_init_declarator          = _pt+9,
-    pt_parameter_declaration    = _pt+10,
-    pt_declaration_specifiers   = _pt+11,
-    pt_type_specifier           = _pt+12,
-    pt_storage_class_specifier  = _pt+13,
-    pt_type_qualifier           = _pt+14,
-    pt_pointer                  = _pt+15,
-    pt_type_qualifier_list      = _pt+16,
-    pt_type_name                = _pt+17,
-    pt_array                    = _pt+18,
-    pt_specifier_qualifier_list = _pt+19,
-    pt_function_specifier       = _pt+20,
-    pt_LP_declarator_RP         = _pt+21,
+    pt_func_def,
+    pt_declaration,
+    pt_parameter_type_list,
+    pt_argument_expression_list,
+    pt_declarator,
+    pt_abstract_declarator,
+    pt_identifier_list,
+    pt_init_declarator_list,
+    pt_init_declarator,
+    pt_parameter_declaration,
+    pt_declaration_specifiers,
+    pt_type_specifier,
+    pt_storage_class_specifier,
+    pt_type_qualifier,
+    pt_pointer,
+    pt_type_qualifier_list,
+    pt_type_name,
+    pt_array,
+    pt_specifier_qualifier_list,
+    pt_function_specifier,
+    pt_LP_declarator_RP,
 
 };
 
@@ -310,7 +245,7 @@ static char *toktopp[] = {
         [T_INT] = "T_INT",              [T_LONG] = "T_LONG",            [T_FLOAT] = "T_FLOAT",          [T_DOUBLE] = "T_DOUBLE",
         [T_SIGNED] = "T_SIGNED",        [T_UNSIGNED] = "T_UNSIGNED",    [T_BOOL] = "T_BOOL",            [T_COMPLEX] = "T_COMPLEX",
         [T_IMAGINARY] = "T_IMAGINARY",  [T_PTR] = "T_PTR",              [T_ELLIPSIS] = "T_ELLIPSIS",
-        [func_def] = "func_def",                                        [pt_declaration] = "pt_declaration",
+        [pt_func_def] = "pt_func_def",                                  [pt_declaration] = "pt_declaration",
         [pt_parameter_type_list] = "pt_parameter_type_list",            [pt_argument_expression_list] = "pt_argument_expression_list",
         [pt_declarator] = "pt_declarator",                              [pt_abstract_declarator] = "pt_abstract_declarator",
         [pt_identifier_list] = "pt_identifier_list",                    [pt_init_declarator_list] = "pt_init_declarator_list",
@@ -331,14 +266,14 @@ typedef struct Symb Symb;
 struct Symb {               // 20
     enum {                  // 4
         Con = 1,            // constant - integer or double with type btyp
-        Str = 2,            // literal string
-        Tmp = 3,            // qbe temporary - hidden from user
-        Var = 4,            // local variable, with type btyp - named
-        Glo = 5,            // global variable, with type btyp - numbered
-        Ext = 6,            // external variable or function, with type btyp, named
-        Fn  = 7,            // function, with type btyp - either a forward declare or definition
+        Str,                // literal string
+        Tmp,                // qbe temporary - hidden from user
+        Var,                // local variable, with type btyp - named
+        Glo,                // global variable, with type btyp - numbered
+        Ext,                // external variable or function, with type btyp, named
+        Fn,                 // function, with type btyp - either a forward declare or definition
     } styp;
-    enum btyp btyp;         // 4 (upto ***<type>)
+    btypeid_t btyp;         // 4 (upto ***<type>)
     union {                 // 8
         long n;             // styp defined - integer constant, temp variable ordinal
         char *v;            // string constant, name of fn or variable (and in short term structs, unions, typedefs etc) OPEN: change v to name
@@ -352,7 +287,7 @@ struct Symb {               // 20
 struct NameType {
     char *name;             // 8
     struct NameType *next;  // 8
-    enum btyp btyp;         // 4
+    btypeid_t btyp;         // 4
 };
 
 
@@ -364,8 +299,6 @@ struct Node {               // 44 bytes
     struct Symb s;          // 20
     struct Node *l, *r;     // 8 + 8
 };
-
-//#define _t(o)    (((TV*)(o))->t)
 
 
 //// https://learn.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=msvc-170
@@ -416,12 +349,91 @@ Symb globals[NGlo];             // global literal strings, variables and functio
 
 
 // ---------------------------------------------------------------------------------------------------------------------
+// C-TYPES
+// ---------------------------------------------------------------------------------------------------------------------
+
+
+void minc_createBk() {
+    btypeid_t tChar, tVoid, tP, tConst, tConstP, tExtern, tFn;  btypeid_t *tl;
+
+    BK_MM *mm = MM_create();
+    Buckets *buckets = mm->malloc(sizeof(Buckets));
+    initBuckets(buckets, 4096);
+    _bk = K_create(mm, buckets);
+    PP(info, "kernel created");
+
+    tm_exclusion_cat(_bk->tm, "mem", btememory);
+    tm_exclusion_cat(_bk->tm, "ptr", bteptr);
+    tm_exclusion_cat(_bk->tm, "ccy", bteccy);
+
+    tChar = tm_exclnominal(_bk->tm, "char", btememory, 1, B_CHAR);
+    tm_exclnominal(_bk->tm, "u8", btememory, 1, B_U8);
+    tm_exclnominal(_bk->tm, "u16", btememory, 2, B_U16);
+    tm_exclnominal(_bk->tm, "u32", btememory, 4, B_U32);
+    tm_exclnominal(_bk->tm, "u64", btememory, 8, B_U64);
+    tm_exclnominal(_bk->tm, "i8", btememory, 1, B_I8);
+    tm_exclnominal(_bk->tm, "i16", btememory, 2, B_I16);
+    tm_exclnominal(_bk->tm, "i32", btememory, 4, B_I32);
+    tm_exclnominal(_bk->tm, "i64", btememory, 8, B_I64);
+    tm_exclnominal(_bk->tm, "f32", btememory, 4, B_F32);
+    tm_exclnominal(_bk->tm, "f64", btememory, 8, B_F64);
+
+    tVoid = tm_exclnominal(_bk->tm, "void", btememory, 0, B_VOID);
+
+    tP = tm_exclnominal(_bk->tm, "P", bteptr, 8, B_P);
+    tm_exclnominal(_bk->tm, "PP", bteptr, 8, B_PP);
+    tm_exclnominal(_bk->tm, "PPP", bteptr, 8, B_PPP);
+
+    tExtern = tm_nominal(_bk->tm, "extern", B_EXTERN);
+    tm_nominal(_bk->tm, "static", B_STATIC);
+    tm_nominal(_bk->tm, "varargs", B_VARARGS);
+    tConst = tm_nominal(_bk->tm, "const", B_CONST);
+    tConstP = tm_nominal(_bk->tm, "constP", B_CONST_P);
+    tFn = tm_nominal(_bk->tm, "fn", B_FN);
+
+    tl = malloc(5 * sizeof(btypeid_t));
+
+    // char & P
+    tl[0] = 2;  tl[1] = tChar;  tl[2] = tP;
+    tm_inter(_bk->tm, tl, B_CHAR_STAR);
+
+    // char & const & P
+    tl[0] = 3;  tl[1] = tChar;  tl[2] = tConst;  tl[3] = tP;
+    tm_inter(_bk->tm, tl, B_CHAR_CONST_STAR);
+
+    // char & const & P & constP
+    tl[0] = 4;  tl[1] = tChar;  tl[2] = tConst;  tl[3] = tP;  tl[4] = tConstP;
+    tm_inter(_bk->tm, tl, B_CHAR_CONST_STAR_CONST);
+
+    // void & P
+    tl[0] = 2;  tl[1] = tVoid;  tl[2] = tP;
+    tm_inter(_bk->tm, tl, B_VOID_STAR);
+
+    // fn & P
+    tl[0] = 2;  tl[1] = tFn;  tl[2] = tP;
+    tm_inter(_bk->tm, tl, B_FN_PTR);
+
+    // fn & extern
+    tl[0] = 2;  tl[1] = tFn;  tl[2] = tExtern;
+    tm_inter(_bk->tm, tl, B_EXTERN_FN);
+
+    // fn & extern & p
+    tl[0] = 3;  tl[1] = tFn;  tl[2] = tP;  tl[3] = tExtern;
+    tm_inter(_bk->tm, tl, B_EXTERN_FN_PTR);
+
+    free(tl);
+
+}
+
+
+
+// ---------------------------------------------------------------------------------------------------------------------
 // SYMBOL TABLE
 // ---------------------------------------------------------------------------------------------------------------------
 
 struct {
     char name[SYM_NAME_MAX];    // 32
-    enum btyp btyp;             // 4
+    btypeid_t btyp;             // 4
     int glo;                    // 4 - 0 means local else an offset into globals
 }
 _symtable[NVar];                // hash table of all defined variables - i.e. current locals and globals
@@ -439,7 +451,7 @@ unsigned _hash(char *s) {
     return h % NVar;
 }
 
-void symadd(char *name, int glo, enum btyp btyp) {
+void symadd(char *name, int glo, btypeid_t btyp) {
     unsigned h0 = _hash(name);
     unsigned h = h0;
     do {
@@ -458,7 +470,7 @@ void symadd(char *name, int glo, enum btyp btyp) {
     die("too many variables");
 }
 
-void symset(char *name, int glo, enum btyp btyp) {
+void symset(char *name, int glo, btypeid_t btyp) {
     unsigned h0 = _hash(name);
     unsigned h = h0;
     do {
@@ -540,7 +552,7 @@ pvt void die_(char *preamble, char *msg, va_list args) {
     exit(1);
 }
 
-void PPbtyp(int level, enum btyp t) {
+void PPbtyp(int level, btypeid_t t) {
     if (level & g_logging_level) {
         while (t & 0xFFFFFF00) {
             fprintf(stderr, "*");

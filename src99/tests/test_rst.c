@@ -1,8 +1,7 @@
 #include <stdlib.h>
 #include <stdalign.h>
-#include "../../bk/include/bk/btype.h"
-#include "../../bk/include/bk/buckets.h"
-#include "../rst.h"
+#include "../../coppertop/bk/include/bk/bk.h"
+#include "../../coppertop/bk/include/bk/rst.h"
 
 
 /*
@@ -40,7 +39,7 @@ int main(int argc, char*argv[]) {
 
     locals = mklocalscope(&a);
     fns = mkfnscope(&a);
-    sm = allocInBuckets(&a, sizeof(smbase), alignof(smbase));
+    sm = allocInBuckets(&a, sizeof(smbase), bk_alignof(smbase));
 
     // C source
     //
@@ -101,7 +100,7 @@ int main(int argc, char*argv[]) {
     // fns
     // add_2; litint*litint ^ litint
 
-    n1 = mkstalloc(&a, 1, "a", _i32);
+    n1 = mkstalloc(&a, 1, "a", B_I32);
 
     // exponentials need to grow and shrink
     // garbage collectors need to be able to traverse a network easily - does it look like a pointer
