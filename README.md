@@ -1,4 +1,4 @@
-# minc
+# mc99
 A minimal C compiler with a QBE backend (based on minic by Quentin Carbonneaux)
 
 - uses c99 grammar from https://www.quut.com/c/ANSI-C-grammar-y-1999.html

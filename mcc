@@ -1,7 +1,7 @@
 #!/bin/sh
 
 DIR=`cd $(dirname $0); pwd`
-MCC=$DIR/_minc99
+MCC=$DIR/_mc99
 
 usage()
 {
@@ -25,7 +25,7 @@ file2="${file%.*}"
 # preprocessor
 # use -include $DIR/stdio.h to override a single file
 # and -I to include whole directory of overrides
-cc -E -I $DIR/include $all -o $file2.p
+cc -E -I $DIR/tdd/include $all -o $file2.p
 
 # call minc
 $MCC < $file2.p > $file2.q

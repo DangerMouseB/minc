@@ -1,6 +1,6 @@
 _minc99
 _minc
-yacc
+src99/yacc
 _qbe
 
 yacc.dSYM/
